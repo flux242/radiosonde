@@ -1,0 +1,5 @@
+#!/bin/bash
+
+#!/bin/sh
+BIN_PATH=$(pwd)
+LD_LIBRARY_PATH="$BIN_PATH" $BIN_PATH/csdr.bin $@

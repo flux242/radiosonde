@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <signal.h>
 
 #ifdef CYGWIN
   #include <fcntl.h>  // cygwin: _setmode()
@@ -1226,11 +1227,55 @@ static void print_frame(gpx_t *gpx, int len) {
     else print_position(gpx, ec);
 }
 
+ui8_t do_read_almanach = 0u;
+void sig_handler(int signo)
+{
+  if (signo == SIGUSR1) {
+    do_read_almanach = 1u;
+  }
+}
+
+void read_almanach_ephem_data(char* eph_file_name, char* alm_file_name_ptr, GPS_t *gps, int option_der)
+{
+    FILE *fp_alm = NULL, *fp_eph = NULL;
+
+    fprintf(stderr, "reading [rinex] oder [almanac]\n");
+
+    if (eph_file_name) {
+      fp_eph = fopen(eph_file_name, "rb"); // bin-mode
+      if (fp_eph == NULL) fprintf(stderr, "[rinex] %s konnte nicht geoeffnet werden\n", eph_file_name);
+    }
+
+    if (alm_file_name_ptr) {
+      fp_alm = fopen(alm_file_name_ptr, "r"); // txt-mode
+      if (fp_alm == NULL) fprintf(stderr, "[almanac] %s konnte nicht geoeffnet werden\n", alm_file_name_ptr);
+    }
+
+    if (fp_alm) {
+        if (read_SEMalmanac(fp_alm, gps->alm) == 0) {
+            gps->almanac = 1;
+        }
+        fclose(fp_alm);
+        if (!option_der) gps->d_err = 4000;
+    }
+    if (fp_eph) {
+        gps->ephs = read_RNXpephs(fp_eph);
+        if (gps->ephs) {
+            gps->ephem = 1;
+            gps->almanac = 0;
+        }
+        fclose(fp_eph);
+        if (!option_der) gps->d_err = 1000;
+    }
+}
 
 int main(int argc, char *argv[]) {
 
     FILE *fp, *fp_alm = NULL, *fp_eph = NULL;
     char *fpname = NULL;
+
+    char *eph_file_name_ptr = NULL;
+    char *alm_file_name_ptr = NULL;
 
     int option_der = 0;    // linErr
     int option_min = 0;
@@ -1279,6 +1324,8 @@ int main(int argc, char *argv[]) {
 #endif
     setbuf(stdout, NULL);
 
+    if (signal(SIGUSR1, sig_handler) == SIG_ERR)
+        printf("\ncan't register SIGUSR1 handler\n");
 
     fpname = argv[0];
     ++argv;
@@ -1331,15 +1378,11 @@ int main(int argc, char *argv[]) {
         }
         else if ( (strcmp(*argv, "-e") == 0) || (strncmp(*argv, "--ephem", 7) == 0) ) {
             ++argv;
-            if (*argv) fp_eph = fopen(*argv, "rb"); // bin-mode
-            else return -1;
-            if (fp_eph == NULL) fprintf(stderr, "[rinex] %s konnte nicht geoeffnet werden\n", *argv);
+            eph_file_name_ptr = *argv;
         }
         else if ( (strcmp(*argv, "-a") == 0) || (strcmp(*argv, "--almanac") == 0) ) {
             ++argv;
-            if (*argv) fp_alm = fopen(*argv, "r"); // txt-mode
-            else return -1;
-            if (fp_alm == NULL) fprintf(stderr, "[almanac] %s konnte nicht geoeffnet werden\n", *argv);
+            alm_file_name_ptr = *argv;
         }
         else if ( strcmp(*argv, "--gpsepoch") == 0 ) { // SEM almanac, GPS week: 10 bit
             ++argv;                                    // GPS epoch (default: 1)
@@ -1449,29 +1492,7 @@ int main(int argc, char *argv[]) {
     }
     if (!fileloaded) fp = stdin;
 
-    if (fp_alm) {
-        if (read_SEMalmanac(fp_alm, gpx.gps.alm) == 0) {
-            gpx.gps.almanac = 1;
-        }
-        fclose(fp_alm);
-        if (!option_der) gpx.gps.d_err = 4000;
-    }
-    if (fp_eph) {
-        /* i = read_RNXephemeris(fp_eph, eph);
-           if (i == 0) {
-               gpx.gps.ephem = 1;
-               gpx.gps.almanac = 0;
-           }
-           fclose(fp_eph); */
-        gpx.gps.ephs = read_RNXpephs(fp_eph);
-        if (gpx.gps.ephs) {
-            gpx.gps.ephem = 1;
-            gpx.gps.almanac = 0;
-        }
-        fclose(fp_eph);
-        if (!option_der) gpx.gps.d_err = 1000;
-    }
-
+    do_read_almanach = 1u;
 
     if (gpx.option.ecc) {
         rs_init_RS255(&gpx.RS);
@@ -1541,6 +1562,10 @@ int main(int argc, char *argv[]) {
     bitofs += shift;
 
     while ( 1 ) {
+        if (do_read_almanach!=0u) {
+            read_almanach_ephem_data(eph_file_name_ptr,alm_file_name_ptr,&gpx.gps,option_der);
+            do_read_almanach=1u;
+        }
 
         header_found = find_header(&dsp, thres, 3, bitofs, dsp.opt_dc);
         _mv = dsp.mv;

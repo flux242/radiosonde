@@ -114,7 +114,7 @@ for ((fifo=1;fifo<=MAX_SLOTS;fifo++)); do
   fifos[$fifo]="$fifo_name"
 done
  
-(nc -luk -p $SCANNER_PORT | while read LINE; do
+(socat -T2 -u UDP-LISTEN:$SCANNER_PORT,reuseaddr,fork - | while read LINE; do
   case "$LINE" in
     TIMER30)
        for freq in "${!actfreq[@]}"; do 

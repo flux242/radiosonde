@@ -114,7 +114,7 @@ for ((fifo=1;fifo<=MAX_SLOTS;fifo++)); do
   fifos[$fifo]="$fifo_name"
 done
  
-(nc -luk $SCANNER_PORT | while read LINE; do
+(nc -luk -p $SCANNER_PORT | while read LINE; do
   case "$LINE" in
     TIMER30)
        for freq in "${!actfreq[@]}"; do 

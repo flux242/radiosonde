@@ -6,12 +6,14 @@
 . ./defaults.conf
 
 SCAN_BINS=4096
+SCAN_OUTPUT_STEP=10000  # in Hz
 SCAN_AVERAGE_TIMES=100
 SCAN_UPDATE_RATE=1
 SCAN_UPDATE_RATE_DIV=5 # 5 seconds
 SCAN_POWER_THRESHOLD=-69
 
-SCANNER_PORT=5677
+SCANNER_OUT_PORT=5676
+SCANNER_COM_PORT=5677
 DECODER_PORT=5678
 
 MAX_SLOTS=10 # maximum number of rx slots
@@ -56,23 +58,30 @@ scan_power()
   ./csdr logaveragepower_cf -70 $SCAN_BINS $SCAN_AVERAGE_TIMES | \
   ./csdr fft_exchange_sides_ff $SCAN_BINS | \
   ./csdr dump_f | tr ' ' '\n' | \
+   tee >(
+    awk -v bins=$SCAN_BINS '{printf("%.1f ",$0);if(0==(NR%bins)){printf("\n")};fflush()}' |
+    awk -v f=$TUNER_FREQ -v bins="$SCAN_BINS" -v sr="$TUNER_SAMPLE_RATE" '
+      {printf("{\"response_type\":\"log_power\",\"samplerate\":%d,\"tuner_freq\":%d,\"result\":\"%s\"}\n", sr, f, $0);
+      fflush()}' |
+    socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_OUT_PORT,broadcast,reuseaddr
+   ) |
    awk -v f=$TUNER_FREQ -v sr=$TUNER_SAMPLE_RATE -v bins=$SCAN_BINS '
      BEGIN{fstep=sr/bins;fstart=f-sr/2;print fstep;print fstart}
      {printf("%d %.1f\n",fstart+fstep*((NR-1)%bins),$0);
       if(0==(NR%bins)){printf("\n")};fflush()}' | \
-   awk -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
+   awk -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
      function abs(x){return (x<0)?-x:x}
-     {if(length($1)!=0){if(abs($1-10000*int($1/10000)<step)){print $0}}
+     {if(length($1)!=0){if(abs($1-outstep*int($1/outstep)<step)){print $0}}
       else{print};
       fflush();}' | \
-   awk -v thr=$SCAN_POWER_THRESHOLD '{if (length($2)!=0){if(int($2)>thr){print 10000*int(int($1)/10000)" "$2;fflush()}}}'
+   awk -v outstep="$SCAN_OUTPUT_STEP" -v thr=$SCAN_POWER_THRESHOLD '{if (length($2)!=0){if(int($2)>thr){print outstep*int(int($1)/outstep)" "$2;fflush()}}}'
 }
 
 # the line below should come before the m10mod if needed.
 #      tee >(c50dft -d1 --ptu --json /dev/stdin > /dev/stderr) | \
 decode_sonde()
 {
-  local bpf3=$(calc_bandpass_param 3000 $DEMODULATOR_OUTPUT_FREQ)
+  local bpf3=$(calc_bandpass_param 5000 $DEMODULATOR_OUTPUT_FREQ)
   local bpf10=$(calc_bandpass_param 10000 $DEMODULATOR_OUTPUT_FREQ)
   (
     ./csdr convert_u8_f | \
@@ -114,7 +123,7 @@ for ((fifo=1;fifo<=MAX_SLOTS;fifo++)); do
   fifos[$fifo]="$fifo_name"
 done
  
-(socat -T2 -u UDP-LISTEN:$SCANNER_PORT,reuseaddr,fork - | while read LINE; do
+(socat -T2 -u UDP-LISTEN:$SCANNER_COM_PORT,reuseaddr,fork - | while read LINE; do
   case "$LINE" in
     TIMER30)
        for freq in "${!actfreq[@]}"; do 
@@ -157,7 +166,7 @@ echo "----------------------------------------" >> /tmp/debug.out
 done) &
 pid1=$!
 
-(while sleep 30; do echo "TIMER30" | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_PORT,broadcast,reuseaddr; done) &
+(while sleep 30; do echo "TIMER30" | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr; done) &
 pid2=$!
 
 trap "cleanup $pid1 $pid2" EXIT INT TERM
@@ -170,5 +179,5 @@ trap "cleanup $pid1 $pid2" EXIT INT TERM
  
 rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - | \
 eval "tee $(printf '>(decode_sonde %q) ' "${fifos[@]}")" | \
-scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_PORT,broadcast,reuseaddr
+scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr
 

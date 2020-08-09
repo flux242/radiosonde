@@ -31,5 +31,5 @@ done |
           }
         }else{print};fflush()
       }' |
- ~/bin/gp/removecolumns.sh '1' | ~/bin/gp/gnuplotblock.sh "-1:241;-1:17" "power map 10k step;image;;map;240;15"
+ ~/bin/gp/removecolumns.sh '1' | ~/bin/gp/gnuplotblock.sh "-1:241;-1:17;-92:-60" "power map 10k step;image;;map;240;15"
 

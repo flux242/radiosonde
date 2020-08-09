@@ -86,6 +86,7 @@ decode_sonde()
     tee >(
       ./csdr bandpass_fir_fft_cc -$bpf9 $bpf9 0.02 |
       ./csdr fmdemod_quadri_cf | ./csdr limit_ff | ./csdr convert_f_s16 |
+      sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
       ./m10mod --ptu --json > /dev/stderr
     ) |
     ./csdr bandpass_fir_fft_cc -$bpf3 $bpf3 0.02 |

@@ -123,7 +123,7 @@ for ((fifo=1;fifo<=MAX_SLOTS;fifo++)); do
   fifos[$fifo]="$fifo_name"
 done
  
-(socat -T2 -u UDP-LISTEN:$SCANNER_COM_PORT,reuseaddr,fork - | while read LINE; do
+(socat -u UDP-RECVFROM:$SCANNER_COM_PORT,fork,reuseaddr - | while read LINE; do
   case "$LINE" in
     TIMER30)
        for freq in "${!actfreq[@]}"; do 

@@ -17,7 +17,7 @@ SCANNER_COM_PORT=5677
 DECODER_PORT=5678
 
 SLOT_TIMEOUT=10 # i.e 30 seconds *10 = 5 minutes
-SLOT_ACTIVATE_TIME=4 # 4 * 5 seconds = 20 seconds min activity
+SLOT_ACTIVATE_TIME=10 # 4 * 5 seconds = 20 seconds min activity
 
 OPTIND=1 #reset index
 while getopts "ha:p:f:s:g:p:P:t:" opt; do
@@ -46,34 +46,32 @@ DECIMATE=$((TUNER_SAMPLE_RATE/DEMODULATOR_OUTPUT_FREQ))
 cleanup()
 {
   local children child
-  children="$1 $2 $(get_children_pids $1) $(get_children_pids $2)"
+  children="$1 $2 $3 $(get_children_pids $1) $(get_children_pids $2) $(get_children_pids $3)"
   kill $children &>/dev/null;wait $children &>/dev/null
 }
 
 scan_power()
 {
-  ./csdr convert_u8_f | \
-  ./csdr fft_cc $SCAN_BINS $((TUNER_SAMPLE_RATE/(SCAN_UPDATE_RATE*SCAN_AVERAGE_TIMES/SCAN_UPDATE_RATE_DIV))) | \
-  ./csdr logaveragepower_cf -70 $SCAN_BINS $SCAN_AVERAGE_TIMES | \
-  ./csdr fft_exchange_sides_ff $SCAN_BINS | \
-  ./csdr dump_f | tr ' ' '\n' | \
-   tee >(
+  local SCAN_BINS=16384 # scan bins is atm hardcoded to be 16384
+
+  while true; do ./iq_client --fft /dev/stdout; done | awk -F';' '{print $3}' |
+  tee >(
     awk -v bins=$SCAN_BINS '{printf("%.1f ",$0);if(0==(NR%bins)){printf("\n")};fflush()}' |
     awk -v f=$TUNER_FREQ -v bins="$SCAN_BINS" -v sr="$TUNER_SAMPLE_RATE" '
       {printf("{\"response_type\":\"log_power\",\"samplerate\":%d,\"tuner_freq\":%d,\"result\":\"%s\"}\n", sr, f, $0);
       fflush()}' |
     socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_OUT_PORT,broadcast,reuseaddr
-   ) |
-   awk -v f=$TUNER_FREQ -v sr=$TUNER_SAMPLE_RATE -v bins=$SCAN_BINS '
-     BEGIN{fstep=sr/bins;fstart=f-sr/2;print fstep;print fstart}
-     {printf("%d %.1f\n",fstart+fstep*((NR-1)%bins),$0);
-      if(0==(NR%bins)){printf("\n")};fflush()}' | \
-   awk -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
-     function abs(x){return (x<0)?-x:x}
-     {if(length($1)!=0){if(abs($1-outstep*int($1/outstep)<step)){print $0}}
-      else{print};
-      fflush();}' | \
-   awk -v outstep="$SCAN_OUTPUT_STEP" -v thr=$SCAN_POWER_THRESHOLD '{if (length($2)!=0){if(int($2)>thr){print outstep*int(int($1)/outstep)" "$2;fflush()}}}'
+  ) |
+  awk -v f=$TUNER_FREQ -v sr=$TUNER_SAMPLE_RATE -v bins=$SCAN_BINS '
+    BEGIN{fstep=sr/bins;fstart=f-sr/2;print fstep;print fstart}
+    {printf("%d %.1f\n",fstart+fstep*((NR-1)%bins),$0);
+     if(0==(NR%bins)){printf("\n")};fflush()}' | \
+  awk -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
+    function abs(x){return (x<0)?-x:x}
+    {if(length($1)!=0){if(abs($1-outstep*int($1/outstep)<step)){print $0}}
+     else{print};
+     fflush();}' | \
+  awk -v outstep="$SCAN_OUTPUT_STEP" -v thr=$SCAN_POWER_THRESHOLD '{if (length($2)!=0){if(int($2)>thr){print outstep*int(int($1)/outstep)" "$2;fflush()}}}'
 }
 
 # the line below should come before the m10mod if needed.
@@ -111,7 +109,6 @@ declare -A slots   # active slots
 (socat -u UDP-RECVFROM:$SCANNER_COM_PORT,fork,reuseaddr - | while read LINE; do
   case "$LINE" in
     TIMER30)
-echo "active slots: ${slots[@]}" >> /tmp/debug.out
        for freq in "${!actfreq[@]}"; do 
 echo "timer: actfreq[$freq] is ${actfreq[$freq]}" >> /tmp/debug.out
          actfreq[$freq]=$((actfreq[$freq]-1))
@@ -146,9 +143,10 @@ pid1=$!
 
 (while sleep 30; do echo "TIMER30" | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr; done) &
 pid2=$!
+(sleep 2; scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) &
+pid3=$!
 
-trap "cleanup $pid1 $pid2" EXIT INT TERM
+trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM
 
 rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
-tee >(scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) |
 ./iq_server --fft /tmp/fft.out --bo 32 - 2400000 8

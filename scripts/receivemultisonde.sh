@@ -112,7 +112,7 @@ start_decoder()
   case "$1" in
     RS41) decoder="./rs41mod --ptu --ecc --crc --json -vv /dev/stdin > /dev/stderr";bw=10 ;;
     RS92) decoder="./rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=10 ;;
-    DFM9) decoder="tee >(./dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) >(./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr)";bw=10 ;;
+    DFM9) decoder="tee >(./dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | ./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=10 ;;
      M10) decoder="./m10mod --ptu --json > /dev/stderr";bw=19.2 ;;
        *) ;;
   esac
@@ -120,7 +120,7 @@ start_decoder()
   ./iq_fm --lpbw $bw - 48000 32 --bo 16 |
   sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
   tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) |
-  $decoder
+  eval "$decoder"
 }
 
 decode_sonde_with_type_detect()

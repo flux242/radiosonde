@@ -76,6 +76,7 @@ scan_power()
    awk -v outstep="$SCAN_OUTPUT_STEP" -v thr=$SCAN_POWER_THRESHOLD '{if (length($2)!=0){if(int($2)>thr){print outstep*int(int($1)/outstep)" "$2;fflush()}}}'
 }
 
+# this funciton is not used and kept only for historical reasons
 # the line below should come before the m10mod if needed.
 #      tee >(c50dft -d1 --ptu --json /dev/stdin > /dev/stderr) | \
 decode_sonde()
@@ -134,7 +135,7 @@ decode_sonde_with_type_detect()
 }
 
 
-
+# this funciton is not used and kept only for historical reasons
 decode_sonde_iqfm()
 {
   (

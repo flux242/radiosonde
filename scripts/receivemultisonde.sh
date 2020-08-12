@@ -105,13 +105,35 @@ decode_sonde()
     done
 }
 
+decode_sonde_iqfm()
+{
+  (
+    ./iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
+    tee >(
+      ./iq_fm --lpbw 19.2 - 48000 32 --bo 16 |
+      sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
+      ./m10mod --ptu --json > /dev/stderr
+    ) |
+    ./iq_fm --lpbw 10.0 - 48000 32 --bo 16 |
+    sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
+    tee >(./dfm09mod --ptu --ecc --json -vv /dev/stdin > /dev/stderr) \
+        >(./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr) \
+        >(./rs41mod --ptu --ecc --crc --json -vv /dev/stdin > /dev/stderr) \
+        >(./rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr) | \
+    aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null
+  ) &>/dev/stdout | while read LINE; do
+      echo "$LINE" | grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' | \
+      (flock 200; socat -u - UDP4-DATAGRAM:127.255.255.255:$DECODER_PORT,broadcast,reuseaddr) 200>$MUTEX_LOCK_FILE
+    done
+}
+
 declare -A actfreq # active frequencies
 declare -A slots   # active slots
 
 (socat -u UDP-RECVFROM:$SCANNER_COM_PORT,fork,reuseaddr - | while read LINE; do
   case "$LINE" in
     TIMER30)
-echo "active slots: ${slots[@]}" >> /tmp/debug.out
+echo "active slots: ${!slots[@]}" >> /tmp/debug.out
        for freq in "${!actfreq[@]}"; do 
 echo "timer: actfreq[$freq] is ${actfreq[$freq]}" >> /tmp/debug.out
          actfreq[$freq]=$((actfreq[$freq]-1))
@@ -127,8 +149,8 @@ echo "Deactivating slot $slot with freq $freq" >> /tmp/debug.out
          elif [ "${actfreq[$freq]}" -ge $SLOT_ACTIVATE_TIME ]; then
            # activate slot
            [ -z "${slots[$freq]}" ] && {
-echo "Activating slot $slot with freq $freq and fifo ${fifos[$slot]}" >> /tmp/debug.out
-             decode_sonde "$freq" &
+echo "Activating slot $slot with freq $freq" >> /tmp/debug.out
+             decode_sonde_iqfm "$freq" &
              slots[$freq]=$!
            }
          fi

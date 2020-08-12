@@ -11,7 +11,7 @@ while read LINE; do
     awk -v tf="$tuner_freq" -v sr="$samplerate" -v sb="$scan_bins" '
       {
         fstart=tf-(sr/2); fstep=sr/sb; i=1;
-        while (i<=NF) {print int(fstart+(i*fstep))" "$i;++i} 
+        while (i<=NF) {print int(fstart+int((i-1)*fstep))" "$i;++i}
         printf("\n");fflush();
       }'
   }
@@ -31,5 +31,6 @@ done |
           }
         }else{print};fflush()
       }' |
- ~/bin/gp/removecolumns.sh '1' | ~/bin/gp/gnuplotblock.sh "-1:241;-1:17;-92:-60" "power map 10k step;image;;map;240;15"
+ ~/bin/gp/removecolumns.sh '1' | ~/bin/gp/gnuplotblock.sh "-1:241;-1:22;-80:-45" "power map 10k step;image;;map;240;20"
+# ~/bin/gp/removecolumns.sh '1' | ~/bin/gp/gnuplotblock.sh "-1:241;-1:17;-95:-65" "power map 10k step;image;;map;240;15"
 

@@ -115,6 +115,7 @@ start_decoder()
     RS92) decoder="./rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=10 ;;
     DFM9) decoder="tee >(./dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | ./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=10 ;;
      M10) decoder="./m10mod --ptu --json > /dev/stderr";bw=19.2 ;;
+  C34C50) decoder="./c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=19.2 ;;
        *) ;;
   esac
 

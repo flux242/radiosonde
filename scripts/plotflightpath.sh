@@ -21,12 +21,12 @@ END{
     print pmin[1]":"pmax[1]";"pmin[2]-(xd-yd)/2":"pmax[2]+(xd-yd)/2;
   }
   else {
-    print pmin[1]-(yd-xd)/2":"pmin[1]+(yd-xd)/2";"pmin[2]":"pmax[2];
+    print pmin[1]-(yd-xd)/2":"pmax[1]+(yd-xd)/2";"pmin[2]":"pmax[2];
   }
 }')
 
 cat "$1" | tail -n+2 |
 awk -i ./latlon-spherical.awk -F',' '{if(0==length(flag)){flag=1;lat0=$4;lon0=$5};print lla2enu($4, $5, $6, lat0, lon0, 0.0)}' |
 awk '{print}END{print "";fflush();system("sleep 1000000")}' |
-~/bin/gp/gnuplotblock.sh "$range" 'Flight Path;impulses lw 1 palette;;xyz'
+~/bin/gp/gnuplotblock.sh "$range;0:35000" 'Flight Path;impulses lw 1 palette;;xyz'
 #~/bin/gp/gnuplotblock.sh '0:20000;-5000:15000' 'Flight Path;impulses lw 1 palette;;xyz'

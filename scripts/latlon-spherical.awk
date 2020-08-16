@@ -118,6 +118,65 @@ function calc_intersection(lat1, lon1, bearing1, lat2, lon2, bearing2)
   dlon13 = atan2( sin(p1[3])*sin(delta13)*cos(p1[1]), cos(delta13) - sin(p1[1])*sin(lat3) );
   lon3 = p1[2] + dlon13;
 
-  print to_degrees(lat3)" "(to_degrees(lon3)+540)%360 - 180;
+  print to_degrees(lat3)";"(to_degrees(lon3)+540)%360 - 180;
 }
+
+function lla2ecef(lat,lon,alt)
+{
+  # WGS84 ellipsoid constants:
+  a = 6378137;
+  e = 8.1819190842622e-2;
+  lat=to_radians(lat);
+  lon=to_radians(lon);
+  # intermediate calculation
+  # (prime vertical radius of curvature)
+  N = a / sqrt(1 - e*e * sin(lat)*sin(lat));
+  x = (N+alt) * cos(lat) * cos(lon);
+  y = (N+alt) * cos(lat) * sin(lon);
+  z = ((1-e*e) * N + alt) * sin(lat);
+
+  return x" "y" "z
+}
+
+# Converts the Earth-Centered Earth-Fixed (ECEF) coordinates (x, y, z) to
+# East-North-Up coordinates in a Local Tangent Plane that is centered at the
+# (WGS-84) Geodetic point (lat0, lon0, alt0).
+function ecef2enu(x, y, z, lat0,lon0,alt0)
+{
+  e = 8.1819190842622e-2;
+  lambda = to_radians(lat0);
+  phi = to_radians(lon0);
+  s = sin(lambda);
+  N = a / sqrt(1 - e*e * s * s);
+
+  sin_lambda = sin(lambda);
+  cos_lambda = cos(lambda);
+  cos_phi = cos(phi);
+  sin_phi = sin(phi);
+
+  x0 = (alt0 + N) * cos_lambda * cos_phi;
+  y0 = (alt0 + N) * cos_lambda * sin_phi;
+  z0 = (alt0 + (1 - e*e) * N) * sin_lambda;
+
+  xd = x - x0;
+  yd = y - y0;
+  zd = z - z0;
+
+  # This is the matrix multiplication
+  xEast = -sin_phi * xd + cos_phi * yd;
+  yNorth = -cos_phi * sin_lambda * xd - sin_lambda * sin_phi * yd + cos_lambda * zd;
+  zUp = cos_lambda * cos_phi * xd + cos_lambda * sin_phi * yd + sin_lambda * zd;
+
+  return xEast" "yNorth" "zUp
+}
+
+function lla2enu(lat, lon, alt, lat0,lon0,alt0)
+{
+  ecefstr=lla2ecef(lat,lon,alt);
+  n1=split(ecefstr,p1," ");
+  if (n1!=3) return;
+
+  return ecef2enu(p1[1],p1[2],p1[3], lat0, lon0, alt0)
+}
+
 

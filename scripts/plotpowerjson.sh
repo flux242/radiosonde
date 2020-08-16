@@ -2,9 +2,8 @@
 
 
 while read LINE; do
-  result=$(echo "$LINE" | jq --unbuffered -r 'select(.result!=null)|.result')
-  samplerate=$(echo "$LINE" | jq --unbuffered -r 'select(.samplerate!=null)|.samplerate')
-  tuner_freq=$(echo "$LINE" | jq --unbuffered -r 'select(.tuner_freq!=null)|.tuner_freq')
+  IFS=$'\n' a=( $(echo "$LINE" | jq --unbuffered -r '.samplerate, .tuner_freq, .result') )
+  samplerate=${a[0]};tuner_freq=${a[1]};result=${a[2]}
   scan_bins=$(echo "$result" | awk '{print NF}')
   [[ -n "$result" ]] && [[ -n "$samplerate" ]] && [[ -n "$tuner_freq" ]] && {
     echo "$result" | 
@@ -31,6 +30,6 @@ done |
           }
         }else{print};fflush()
       }' |
- ~/bin/gp/removecolumns.sh '1' | ~/bin/gp/gnuplotblock.sh "-1:241;-1:22;-80:-45" "power map 10k step;image;;map;240;20"
+ ~/bin/gp/removecolumns.sh '1' | ~/bin/gp/gnuplotblock.sh "-1:241;-1:22;-80:-50" "power map 10k step;image;;map;240;20"
 # ~/bin/gp/removecolumns.sh '1' | ~/bin/gp/gnuplotblock.sh "-1:241;-1:17;-95:-65" "power map 10k step;image;;map;240;15"
 

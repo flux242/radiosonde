@@ -45,5 +45,5 @@ tsf=$(calc_bandpass_param $TUNER_FREQ_SHIFT $TUNER_SAMPLE_RATE)
 
 rtl_sdr -p $DONGLE_PPM -f $((TUNER_FREQ+TUNER_FREQ_SHIFT)) -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
 demodulate_nfm "$tsf" "$fbw" |
-sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5
+sox -t raw -esigned-integer -b 16 -r 48000 - -b 16 -c 1 -t wav - highpass 10 gain +5
 

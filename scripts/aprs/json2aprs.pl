@@ -3,6 +3,26 @@
 ## axudp extensions provided by dl9rdz
 
 # this is a heavy facelifted script from Zilog
+# Usage:
+#
+# nc -luk 5678 | \
+# ./aprs/json2aprs.pl MYCALLSIGN MYPASS MYLAT MYLON " My comment srting" | 
+# socat -u - UDP4-DATAGRAM:0.0.0.0:30448,broadcast,reuseaddr
+#
+# It will receive decoded radiosonde json strings broadcasted on the UDP port 5678,
+# convert it into APRS format and broadcasts it on the 30448 port locally. If the
+# aprsfakeserver.pl is started too it will receive messages on that port and send
+# it to the client on the TCP port 14580. I use this to show sondes using YAAC
+# 
+# Another usage scenario
+# socat -d -d exec:./aprs/aprsfakeclient.sh,pty,stderr TCP:radiosondy.info:14590
+# where aprsfakeclient.sh is
+# ```
+# #!/bin/bash
+#
+# nc -luk 5678 | ./aprs/json2aprs.pl MYCALLSIGN MYPASS MYLAT MYLON " My comment srting"
+# ```
+# in this case json2aprs.pl will send its output to the radiosondy.info port 14590
 #
 
 use strict;

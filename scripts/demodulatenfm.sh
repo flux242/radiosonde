@@ -2,6 +2,8 @@
 #
 # Written by Alexnader K
 #
+# output is 16bit unsigned, 1 channel, 48kHz wav
+#
 
 . ./defaults.conf
 

@@ -151,8 +151,8 @@ sub base91_from_decimal {
 sub deg2aprsoffset
 {
   my $deg = shift @_;
-  my $degint = $deg * 10000;
-  return int(($deg-$degint)*100);
+  my $degint = int($deg * 10000);
+  return int((($deg * 10000) - $degint)*100);
 }
 
 sub lat2aprs {
@@ -278,7 +278,7 @@ while ($line = <$fpi>) {
         my $bkt = $json->{"bt"} // '';
         my $bktstr = length($bkt)!=0 ? $bkt < 65535 ? " BK=" . int($bkt/3600) . "h" . int($bkt/60)%60 . "m" : ' BK=Off' : "";
 
-        my $str = sprintf("$mycallsign-15>APRS,TCPIP*:;%-9s*%06dh%07.2f/%08.2fO%03d/%03d/A=%06d!w%s%s!Clb=%.1fm/s%s%s %.2fMHz Type=%s%s%s%s%s%s %s",
+        my $str = sprintf("$mycallsign-15>APRS,TCPIP*:;%-9s*%06dh%s/%sO%03d/%03d/A=%06d!w%s%s!Clb=%.1fm/s%s%s %.2fMHz Type=%s%s%s%s%s%s %s",
                         $callsign, $hms, $lat, $lon, $course, $speed, $alt, base91_from_decimal($latoffset), base91_from_decimal($lonoffset), $climb, $tempstr, $humidstr, $freq/1e6, $type, $bktstr, $satstr, $battstr, $otg, $framestr, $comment);
         print $fpo "$str\n";
 

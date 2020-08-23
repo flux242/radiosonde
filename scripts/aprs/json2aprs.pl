@@ -41,11 +41,11 @@ my $filename = undef;
 
 our $mycallsign = undef;
 my $passcode = undef;
-my $homelat = 0.0;
-my $homelon = 0.0;
+my $homelat;
+my $homelon;
 our $homeaprslat;
 our $homeaprslon;
-our $comment = '';
+our $comment;
 our $first_time_alarm;
 
 my $udp;
@@ -63,6 +63,9 @@ while (@ARGV) {
 }
 
 (defined $mycallsign and defined $passcode) or die "Missing script arguments\n";
+defined $homelat or $homelat = 0.0;
+defined $homelon or $homelon = 0.0;
+defined $comment or $comment= '';
 
 our $fpi;
 
@@ -148,11 +151,12 @@ sub base91_from_decimal {
     return $text;
 }
 
-sub deg2aprsoffset
+sub deg2aprsdao
 {
   my $deg = shift @_;
-  my $degint = int($deg * 10000);
-  return int((($deg * 10000) - $degint)*100);
+  my $minute = ($deg - int($deg))*60.0; # we need third and fourth digit after comma
+  $minute = sprintf("%.4f", $minute);   # sprintf should round
+  return int( ($minute - int($minute)) * 10000)%100;
 }
 
 sub lat2aprs {
@@ -181,6 +185,7 @@ sub deg2aprs {
   }
   return ($aprstr, $hemchar);
 }
+
 sub put_station_info {
   # use E instead of ` to show an eye instead of a radar
   printf $fpo "%s-2>APNL51,TCPIP*,qAI,%s-2:!%s/%s`%s\n\n", $mycallsign, $mycallsign, $homeaprslat, $homeaprslon, $comment;
@@ -233,14 +238,12 @@ while ($line = <$fpi>) {
         my $hms = $time->hour*10000+$time->min*100+$time->sec;
 
         my $lat; my $lon;
-        my $latoffset; my $lonoffset;
+        my $latdoa; my $londoa;
 
         $lat = lat2aprs($json->{"lat"});
-        $latoffset = deg2aprsoffset($json->{"lat"});
-#        $latoffset = int(90 * (($lat*100) - int($lat*100)));
+        $latdoa = int( 0.5 + deg2aprsdao($json->{"lat"})*0.9);
         $lon = lon2aprs($json->{"lon"});
-        $lonoffset = deg2aprsoffset($json->{"lon"});
-#        $lonoffset = int(90 * (($lon*100) - int($lon*100)));
+        $londoa = int( 0.5 + deg2aprsdao($json->{"lon"})*0.9);
 
         my $alt = $json->{"alt"}*3.28084; ## m -> feet
 
@@ -279,7 +282,7 @@ while ($line = <$fpi>) {
         my $bktstr = length($bkt)!=0 ? $bkt < 65535 ? " BK=" . int($bkt/3600) . "h" . int($bkt/60)%60 . "m" : ' BK=Off' : "";
 
         my $str = sprintf("$mycallsign-15>APRS,TCPIP*:;%-9s*%06dh%s/%sO%03d/%03d/A=%06d!w%s%s!Clb=%.1fm/s%s%s %.2fMHz Type=%s%s%s%s%s%s %s",
-                        $callsign, $hms, $lat, $lon, $course, $speed, $alt, base91_from_decimal($latoffset), base91_from_decimal($lonoffset), $climb, $tempstr, $humidstr, $freq/1e6, $type, $bktstr, $satstr, $battstr, $otg, $framestr, $comment);
+                        $callsign, $hms, $lat, $lon, $course, $speed, $alt, base91_from_decimal($latdoa), base91_from_decimal($londoa), $climb, $tempstr, $humidstr, $freq/1e6, $type, $bktstr, $satstr, $battstr, $otg, $framestr, $comment);
         print $fpo "$str\n";
 
         if($sock) {

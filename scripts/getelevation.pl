@@ -55,8 +55,9 @@ my $success = read $in, my $bytes, 2;
 die $! if not defined $success;
 last if not $success;
 
-my ($high, $low) = unpack 'C C', $bytes;
-print 256*$high+$low . "\n";
+my $value = unpack('n', $bytes);
+$value = unpack('s', pack('S',$value));
+print "$value\n";
 
 #while (1) {
 #    my $success = read $in, my $bytes, 2;

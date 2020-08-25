@@ -207,7 +207,7 @@ if($udp) {
     $kissheader = kissmkhead("APRS",uc($mycallsign));
 }
 
-print $fpo "user $mycallsign pass $passcode vers \"M0ROZ decoder\" 0v1\n\n";
+print $fpo "user $mycallsign pass $passcode vers \"M0ROZ decoder\" 0v1 filter m/1\n\n";
 $homeaprslat = lat2aprs($homelat);
 $homeaprslon = lon2aprs($homelon);
 
@@ -255,34 +255,37 @@ while ($line = <$fpi>) {
         my $callsign = $json->{"id"};
 
         my $elevation = `./getelevation.pl $json->{"lat"} $json->{"lon"}`;
-        my $otg = length($elevation)!=0 ? " OG:" . int($json->{"alt"}-$elevation) ."m" : "";
+        my $otg = defined $elevation ? " OG:" . int($json->{"alt"}-$elevation) ."m" : "";
 
-        my $frame = $json->{"frame"} // '';
-        my $framestr = length($frame)!=0 ? sprintf(" FN=%d", $frame):"";
+        my $frame = $json->{"frame"};
+        my $framestr = defined $frame ? sprintf(" FN=%d", $frame) : "";
 
         my $climb = $json->{"vel_v"};
+
         my $freq = $json->{"freq"};
+        my $freqstr = defined $freq ? sprintf(" %.2fMHz", $freq/1e6) : "";
 
-        my $temp = $json->{"temp"} // '';
-        my $tempstr = length($temp)!=0 ? sprintf(" t=%.1fC", $temp):"";
+        my $temp = $json->{"temp"};
+        my $tempstr = defined $temp ? sprintf(" t=%.1fC", $temp) : "";
 
-        my $humid = $json->{"humidity"} // '';
-        my $humidstr = length($humid)!=0 ? sprintf(" h=%.1f%%", $humid):"";
+        my $humid = $json->{"humidity"};
+        my $humidstr = defined $humid ? sprintf(" h=%.1f%%", $humid) : "";
 
         my $batt = $json->{"batt"};
-        my $battstr = length($batt)!=0 ? sprintf(" V=%.1fV", $batt):"";
+        my $battstr = defined $batt ? sprintf(" V=%.1fV", $batt) : "";
 
         my $type = $json->{"subtype"};
-        if (length($type)==0){$type = $json->{"type"};}
+        defined $type or $type = $json->{"type"};
+        defined $type or $type = "";
         
-        my $sats = $json->{"sats"} // '';
-        my $satstr = length($sats)!=0 ? " Sats:". $sats : "";
+        my $sats = $json->{"sats"};
+        my $satstr = defined $sats ? " Sats:". $sats : "";
 
-        my $bkt = $json->{"bt"} // '';
-        my $bktstr = length($bkt)!=0 ? $bkt < 65535 ? " BK=" . int($bkt/3600) . "h" . int($bkt/60)%60 . "m" : ' BK=Off' : "";
+        my $bkt = $json->{"bt"};
+        my $bktstr = defined $bkt ? $bkt < 65535 ? " BK=" . int($bkt/3600) . "h" . int($bkt/60)%60 . "m" : ' BK=Off' : "";
 
-        my $str = sprintf("$mycallsign-15>APRS,TCPIP*:;%-9s*%06dh%s/%sO%03d/%03d/A=%06d!w%s%s!Clb=%.1fm/s%s%s %.2fMHz Type=%s%s%s%s%s%s %s",
-                        $callsign, $hms, $lat, $lon, $course, $speed, $alt, base91_from_decimal($latdoa), base91_from_decimal($londoa), $climb, $tempstr, $humidstr, $freq/1e6, $type, $bktstr, $satstr, $battstr, $otg, $framestr, $comment);
+        my $str = sprintf("$mycallsign-15>APRS,TCPIP*:;%-9s*%06dh%s/%sO%03d/%03d/A=%06d!w%s%s!Clb=%.1fm/s%s%s%s Type=%s%s%s%s%s%s %s",
+                        $callsign, $hms, $lat, $lon, $course, $speed, $alt, base91_from_decimal($latdoa), base91_from_decimal($londoa), $climb, $tempstr, $humidstr, $freqstr, $type, $bktstr, $satstr, $battstr, $otg, $framestr, $comment);
         print $fpo "$str\n";
 
         if($sock) {

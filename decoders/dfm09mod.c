@@ -748,7 +748,7 @@ static void print_gpx(gpx_t *gpx) {
             }
 
             // Print JSON blob     // valid sonde_ID?
-            printf("{ \"type\": \"%s\"", json_sonde_type);
+            printf("{ \"type\": \"%s\"", "DFM");
             printf(", \"frame\": %d, \"id\": \"%s\", \"datetime\": \"%04d-%02d-%02dT%02d:%02d:%06.3fZ\", \"lat\": %.5f, \"lon\": %.5f, \"alt\": %.5f, \"vel_h\": %.5f, \"heading\": %.5f, \"vel_v\": %.5f",
                    gpx->frnr, json_sonde_id, gpx->jahr, gpx->monat, gpx->tag, gpx->std, gpx->min, gpx->sek, gpx->lat, gpx->lon, gpx->alt, gpx->horiV, gpx->dir, gpx->vertV);
             if (gpx->ptu_out >= 0xA && gpx->status[0] > 0) { // DFM>=09(P): Battery (STM32)
@@ -758,7 +758,7 @@ static void print_gpx(gpx_t *gpx) {
                 float t = get_Temp(gpx); // ecc-valid temperature?
                 if (t > -270.0) printf(", \"temp\": %.1f", t);
             }
-            if (dfm_typ > 0) printf(", \"subtype\": \"0x%1X\"", dfm_typ);
+            if (dfm_typ > 0) printf(", \"subtype\": \"%s\"", json_sonde_type);
             printf(" }\n");
             printf("\n");
         }

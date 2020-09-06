@@ -4,6 +4,20 @@
 #
 # output is 16bit unsigned, 1 channel, 48kHz wav
 #
+# Usage examples:
+# 
+# Dapnet POCSAG decoding
+# ./demodulatenfm.sh -f 439986400 -g 0 -s 2400000 -P 35 -b 3500 | \
+#  sox -t wav -esigned-integer -b 16 -r 48000 - -b 16 -t wav -r 22050 -esigned-integer - | \
+#  tee >(aplay -r 22050 -f S16_LE -t wav -c 1 -B 500000) | \ 
+#  multimon-ng -a POCSAG1200 -f auto -
+#
+# APRS decoding and broadcast messages on UDP port 30448
+# ./demodulatenfm.sh -f 144800000 -g 0 -s 2400000 -P 35 -b 6000 | \
+#  sox -t wav -esigned-integer -b 16 -r 48000 - -b 16 -t wav -r 22050 -esigned-integer - | \
+#  tee >(aplay -r 22050 -f S16_LE -t wav -c 1 -B 500000) | \
+#  multimon-ng -a AFSK1200 -A - 2>/dev/null | tee /dev/stderr | socat -u - udp-datagram:0.0.0.0:30448,broadcast
+
 
 . ./defaults.conf
 

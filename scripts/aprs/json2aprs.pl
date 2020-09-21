@@ -179,7 +179,7 @@ sub deg2aprs {
   my $aprstr = '';
 
   if ($deg =~ /(-?\d*)(\.\d*)/) {
-    if ($1 < 0) { $hemchar="$negchar"; $sign *= -1; }
+    if ($1 < 0) { $hemchar="$negchar"; $sign = -1; }
     else        { $hemchar="$poschar"; $sign = 1; }
     $aprstr = $sign*$1*100+$2*60;
   }
@@ -233,7 +233,17 @@ while ($line = <$fpi>) {
           $datetime = $1;
         }
 
-        my $time = Time::Piece->strptime($datetime, "%Y-%m-%dT%H:%M:%S");
+        # sometimes DFM decoder returns an invalid unparsable data
+        # whith makes the script stop. Here is an exception handling
+        my $time;
+        eval {
+          $time = Time::Piece->strptime($datetime, "%Y-%m-%dT%H:%M:%S");
+          1;
+        }
+        or do {
+          my $error = $@ || 'Unknown error by date parsing';
+          print STDERR $error;
+        };
 
         my $hms = $time->hour*10000+$time->min*100+$time->sec;
 
@@ -254,8 +264,8 @@ while ($line = <$fpi>) {
 
         my $callsign = $json->{"id"};
 
-        my $elevation = `./getelevation.pl $json->{"lat"} $json->{"lon"}`;
-        my $otg = defined $elevation ? " OG:" . int($json->{"alt"}-$elevation) ."m" : "";
+        my $elevation = `./getelevation.pl $json->{"lat"} $json->{"lon"} 2>/dev/null`;
+        my $otg = length($elevation) ? " OG:" . int($json->{"alt"}-$elevation) ."m" : "";
 
         my $frame = $json->{"frame"};
         my $framestr = defined $frame ? sprintf(" FN=%d", $frame) : "";

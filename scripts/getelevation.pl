@@ -34,12 +34,12 @@ my $hgtfile = sprintf("./dem3/%s%d%s%03d.hgt", $NS, $sign*int($lat), $EW, $sign*
 my $lat_rounded; my $lon_rounded;
 my $offset_row; my $offset_col;
 
-if ($lat =~ /(-?\d*)(\.\d*)/) {
-  $lat_rounded = sprintf("%.5f", $2);
+if ($lat =~ /(-?\d*)(\.\d*)?/) {
+  defined $2 ? $lat_rounded = sprintf("%.5f", $2) : $lat_rounded = 0.0;
   $offset_row = int(1201*$lat_rounded);
 }
-if ($lon =~ /(-?\d*)(\.\d*)/) {
-  $lon_rounded = sprintf("%.5f", $2);
+if ($lon =~ /(-?\d*)(\.\d*)?/) {
+  defined $2 ? $lon_rounded = sprintf("%.5f", $2) : $lon_rounded = 0.0;
   $offset_col = int(1201*$lon_rounded);
 }
 

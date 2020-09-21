@@ -115,9 +115,16 @@ start_decoder()
     RS92) decoder="./rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=10 ;;
     DFM9) decoder="tee >(./dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | ./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=10 ;;
      M10) decoder="./m10mod --ptu --json > /dev/stderr";bw=19.2 ;;
-  C34C50) decoder="./c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=19.2 ;;
+  C34C50) decoder="tee >(./c34dft -d1 --ptu --json /dev/stdin > /dev/stderr) | ./c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=19.2 ;;
        *) ;;
   esac
+
+  [ "$1" = "RS92" ] && {
+    # check if ephemeridis file exist and not older than EPHEM_MAX_AGE_SEC
+    [ -e "$EPHEM_FILE" ] && [ "$(($(date +%s)-$(date -r $EPHEM_FILE +%s)))" -gt "$EPHEM_MAX_AGE_SEC" ] && \rm $EPHEM_FILE
+    [ -e "$EPHEM_FILE" ] || ./getephemeris.sh
+    [ -e "$EPHEM_FILE" ] || decoder="cat /dev/stdin >/dev/null"
+  }
 
   ./iq_fm --lpbw $bw - 48000 32 --bo 16 |
   sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |

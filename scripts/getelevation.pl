@@ -35,15 +35,15 @@ my $lat_rounded; my $lon_rounded;
 my $offset_row; my $offset_col;
 
 if ($lat =~ /(-?\d*)(\.\d*)?/) {
-  defined $2 ? $lat_rounded = sprintf("%.5f", $2) : $lat_rounded = 0.0;
+  defined $2 ? ($lat_rounded = sprintf("%.5f", $2)) : ($lat_rounded = 0.0);
   $offset_row = int(1201*$lat_rounded);
 }
 if ($lon =~ /(-?\d*)(\.\d*)?/) {
-  defined $2 ? $lon_rounded = sprintf("%.5f", $2) : $lon_rounded = 0.0;
+  defined $2 ? ($lon_rounded = sprintf("%.5f", $2)) : ($lon_rounded = 0.0);
   $offset_col = int(1201*$lon_rounded);
 }
 
-#print STDERR "lat_round: $lat_rounded; lon_rounded: $lon_rounded\n";
+#print STDERR "lat_rounded: $lat_rounded; lon_rounded: $lon_rounded\n";
 
 my $offset = ((1200-$offset_row) * 1201 * 2) + ($offset_col*2);
 

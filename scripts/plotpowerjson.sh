@@ -30,6 +30,9 @@ done |
           }
         }else{print};fflush()
       }' |
- ~/bin/gp/removecolumns.sh '1' | ~/bin/gp/gnuplotblock.sh "-1:241;-1:22;-80:-50" "power map 10k step;image;;map;240;20"
-# ~/bin/gp/removecolumns.sh '1' | ~/bin/gp/gnuplotblock.sh "-1:241;-1:17;-95:-65" "power map 10k step;image;;map;240;15"
-
+( # at first the block length is calculated because gnuplotblock cant dynamically adjust to the
+  # length changes, so we wait util 2 adjacent blocks have the same length and only then continue
+  # I have no idea why the block length changes, something isn't right with the awk code block above
+ bl=$(awk 'BEGIN{ol=0;l=0}{if(length($1)!=0){l++;}else{if(l!=0 && ol==l){print l;exit 0}else{ol=l;l=0;}}}');
+ ~/bin/gp/removecolumns.sh '1' |  ~/bin/gp/gnuplotblock.sh "-1:$((bl+1));-1:22;-80:-50" "power map 10k step;image;;map;$bl;20"
+)

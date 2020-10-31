@@ -1,9 +1,11 @@
 #/bin/bash
 
-# it wouldn't allow my to get almanac using wget for some reason
-# wget -O- https://www.navcen.uscg.gov/?pageName=currentAlmanac&format=sem
-# but the code below works
-
+# The following wget call seems to work making this script obsolete:
+#
+# wget --referer="https://www.navcen.uscg.gov" \
+#      --user-agent="Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:52.0) Gecko/20100101 Firefox/52.0" \
+#      -O- "https://www.navcen.uscg.gov/?pageName=currentAlmanac&format=sem-txt" 
+#
 # Don't know how their file naming scheme works but there's a pattern in there: 
 # Digits 61440,147456,233472,319488,405504,503808,589824 have 4096
 # as their common divider. 61440/4096= 15 + 21*0, and 147456/4096= 15 + 21*1 and so on.

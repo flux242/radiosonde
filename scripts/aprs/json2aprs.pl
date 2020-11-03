@@ -234,7 +234,7 @@ while ($line = <$fpi>) {
         }
 
         # sometimes DFM decoder returns an invalid unparsable data
-        # whith makes the script stop. Here is an exception handling
+        # which makes the script stop. Here is an exception handling
         my $time;
         eval {
           $time = Time::Piece->strptime($datetime, "%Y-%m-%dT%H:%M:%S");
@@ -243,6 +243,7 @@ while ($line = <$fpi>) {
         or do {
           my $error = $@ || 'Unknown error by date parsing';
           print STDERR $error;
+          next; # can't continue as the time object wasn't created
         };
 
         my $hms = $time->hour*10000+$time->min*100+$time->sec;

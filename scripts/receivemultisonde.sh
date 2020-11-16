@@ -121,9 +121,19 @@ start_decoder()
 
   [ "$1" = "RS92" ] && {
     # check if ephemeridis file exist and not older than EPHEM_MAX_AGE_SEC
-    [ -e "$EPHEM_FILE" ] && [ "$(($(date +%s)-$(date -r $EPHEM_FILE +%s)))" -gt "$EPHEM_MAX_AGE_SEC" ] && \rm $EPHEM_FILE
-    [ -e "$EPHEM_FILE" ] || ./getephemeris.sh
-    [ -e "$EPHEM_FILE" ] || decoder="cat /dev/stdin >/dev/null"
+    [ -s "$EPHEM_FILE" ] && [ "$(($(date +%s)-$(date -r $EPHEM_FILE +%s)))" -gt "$EPHEM_MAX_AGE_SEC" ] && \rm $EPHEM_FILE
+    [ -s "$EPHEM_FILE" ] || ./getephemeris.sh
+    [ -s "$EPHEM_FILE" ] || {
+      [ -s "$ALMANAC_FILE" ] && [ "$(($(date +%s)-$(date -r $ALMANAC_FILE +%s)))" -gt "$ALMANAC_MAX_AGE_SEC" ] && \rm $ALMANAC_FILE
+      [ -s "$ALMANAC_FILE" ] || ./getsemalmanac.sh "$ALMANAC_FILE"
+    }
+    [ -s "$EPHEM_FILE" ] || {
+      if [ -s "$ALMANAC_FILE" ]; then
+        decoder="./rs92mod -a "$ALMANAC_FILE" --crc --ecc --json /dev/stdin > /dev/stderr"
+      else
+        decoder="cat /dev/stdin >/dev/null"
+      fi
+    }
   }
 
   ./iq_fm --lpbw $bw - 48000 32 --bo 16 |
@@ -172,7 +182,6 @@ declare -A slots   # active slots
 (socat -u UDP-RECVFROM:$SCANNER_COM_PORT,fork,reuseaddr - | while read LINE; do
   case "$LINE" in
     TIMER30)
-echo "active slots: ${!slots[@]}" >> /tmp/debug.out
        for freq in "${!actfreq[@]}"; do 
 echo "timer: actfreq[$freq] is ${actfreq[$freq]}" >> /tmp/debug.out
          actfreq[$freq]=$((actfreq[$freq]-1))
@@ -194,6 +203,7 @@ echo "Activating slot $slot with freq $freq" >> /tmp/debug.out
            }
          fi
        done
+echo "active slots: ${!slots[@]}" >> /tmp/debug.out
 echo "----------------------------------------" >> /tmp/debug.out
        ;;
     *) freq="${LINE% *}"

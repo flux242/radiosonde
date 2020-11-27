@@ -175,8 +175,9 @@ sub lon2aprs {
 
 sub deg2aprs {
   my ($deg, $negchar, $poschar) = @_;
-  my $sign; my $hemchar;
-  my $aprstr = '';
+  my $sign;
+  my $hemchar = $negchar;
+  my $aprstr = "0.0";
 
   if ($deg =~ /(-?\d*)(\.\d*)/) {
     if ($1 < 0) { $hemchar="$negchar"; $sign = -1; }

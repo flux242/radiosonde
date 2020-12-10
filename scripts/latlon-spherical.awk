@@ -79,7 +79,7 @@ function calc_bearing(lat1,lon1,lat2,lon2)
 #
 #  @example
 #
-#     calc_intersection(51.8853, 0.2545, 108.547, 49.0034, 2.5735, 32.435) // 50.9078°N, 004
+#        calc_intersection(51.8853, 0.2545, 108.547, 49.0034, 2.5735, 32.435) // 50.9078°N, 004.5084°E
 #
 function calc_intersection(lat1, lon1, bearing1, lat2, lon2, bearing2)
 {
@@ -118,7 +118,7 @@ function calc_intersection(lat1, lon1, bearing1, lat2, lon2, bearing2)
   dlon13 = atan2( sin(p1[3])*sin(delta13)*cos(p1[1]), cos(delta13) - sin(p1[1])*sin(lat3) );
   lon3 = p1[2] + dlon13;
 
-  print to_degrees(lat3)";"(to_degrees(lon3)+540)%360 - 180;
+  return to_degrees(lat3)";"(to_degrees(lon3)+540)%360 - 180;
 }
 
 function lla2ecef(lat,lon,alt)

@@ -153,7 +153,7 @@ decode_sonde_wav()
 
 # TODO: add a switch to use rtlclient2.sh instead of the rtl_sdr
 if [ -z "$WAV_INPUT" ]; then
-  rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - | tee >(log_power >/dev/stderr) | decode_sonde
+  rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - 2>/dev/null | tee >(log_power >/dev/stderr) | decode_sonde
 else
   decode_sonde_wav
 fi

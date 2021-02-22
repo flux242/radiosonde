@@ -18,6 +18,7 @@ DECODER_PORT=5678
 
 SLOT_TIMEOUT=10 # i.e 30 seconds *10 = 5 minutes
 SLOT_ACTIVATE_TIME=4 # 4 * 5 seconds = 20 seconds min activity
+MAX_SLOTS=5
 
 OPTIND=1 #reset index
 while getopts "ha:p:f:s:g:p:P:t:" opt; do
@@ -196,7 +197,7 @@ echo "Deactivating slot $slot with freq $freq" >> /tmp/debug.out
            unset actfreq[$freq]
          elif [ "${actfreq[$freq]}" -ge $SLOT_ACTIVATE_TIME ]; then
            # activate slot
-           [ -z "${slots[$freq]}" ] && {
+           [ -z "${slots[$freq]}" ] && [ "${#slots[@]}" -lt $MAX_SLOTS ] && {
 echo "Activating slot $slot with freq $freq" >> /tmp/debug.out
              decode_sonde_with_type_detect "$freq" &
              slots[$freq]=$!

@@ -10,7 +10,8 @@ SCAN_OUTPUT_STEP=10000  # in Hz
 SCAN_AVERAGE_TIMES=100
 SCAN_UPDATE_RATE=1
 SCAN_UPDATE_RATE_DIV=5 # 5 seconds
-SCAN_POWER_THRESHOLD=-69
+SCAN_POWER_NOISE_LEVEL_INIT=-69 # initial noise level
+SCAN_POWER_THRESHOLD=5 # signal is detected if its power more than (noise level + this value) 
 
 SCANNER_OUT_PORT=5676
 SCANNER_COM_PORT=5677
@@ -71,10 +72,13 @@ scan_power()
       if(0==(NR%bins)){printf("\n")};fflush()}' | \
    awk -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
      function abs(x){return (x<0)?-x:x}
-     {if(length($1)!=0){if(abs($1-outstep*int($1/outstep)<step)){print $0}}
-      else{print};
+     BEGIN{idx=1}
+     {if(length($2)!=0){a[idx++]=$2;if(abs($1-outstep*int($1/outstep)<step)){print $0}}
+      else{print; asort(a); if(idx>1){print a[int(idx/2)]} idx=1;};
       fflush();}' | \
-   awk -v outstep="$SCAN_OUTPUT_STEP" -v thr=$SCAN_POWER_THRESHOLD '{if (length($2)!=0){if(int($2)>thr){print outstep*int(int($1)/outstep)" "$2;fflush()}}}'
+   awk -v outstep="$SCAN_OUTPUT_STEP" -v nl=$SCAN_POWER_NOISE_LEVEL_INIT -v thr=$SCAN_POWER_THRESHOLD '
+     {if (length($2)!=0){if(int($2)>(nl+thr)){print outstep*int(int($1)/outstep)" "$2;fflush()}}
+      else if(length($1)!=0) {nl=$1}}'
 }
 
 # this funciton is not used and kept only for historical reasons

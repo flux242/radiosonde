@@ -46,7 +46,7 @@ c34dft: c34dft.c
 
 .PHONY: clean
 clean:
-	rm -f rs41mod rs92mod lms6Xmod meisei100mod dfm09mod m10mod mXXmod imet54mod dtd_detect
+	rm -f rs41mod rs92mod lms6Xmod meisei100mod dfm09mod m10mod mXXmod imet54mod dtd_detect c34dft c50dft dft_detect
 	rm -f demod_mod.o
 	rm -f bch_ecc_mod.o
 

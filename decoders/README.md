@@ -2,12 +2,11 @@
 ## Radiosonde decoders
 
 alternative decoders using cross-correlation for better header-synchronization
-This is a clone of the https://github.com/rs1729/RS/tree/master/demod/mod
 
 #### Files
 
   * `demod_mod.c`, `demod_mod.h`, <br />
-    `rs41mod.c`, `rs92mod.c`, `dfm09mod.c`, `m10mod.c`, `lms6mod.c`, `lms6Xmod.c`, `meisei100mod.c`, <br />
+    `rs41mod.c`, `rs92mod.c`, `dfm09mod.c`, `m10mod.c`, `lms6mod.c`, `lms6Xmod.c`, `meisei100mod.c`, `imet54mod.c`,<br />
     `bch_ecc_mod.c`, `bch_ecc_mod.h`
 
 #### Compile
@@ -16,6 +15,7 @@ This is a clone of the https://github.com/rs1729/RS/tree/master/demod/mod
   `gcc rs41mod.c demod_mod.o bch_ecc_mod.o -lm -o rs41mod` <br />
   `gcc dfm09mod.c demod_mod.o -lm -o dfm09mod` <br />
   `gcc m10mod.c demod_mod.o -lm -o m10mod` <br />
+  `gcc imet54mod.c demod_mod.o -lm -o imet54mod` <br />
   `gcc lms6Xmod.c demod_mod.o bch_ecc_mod.o -lm -o lms6Xmod` <br />
   `gcc meisei100mod.c demod_mod.o bch_ecc_mod.o -lm -o meisei100mod` <br />
   `gcc rs92mod.c demod_mod.o bch_ecc_mod.o -lm -o rs92mod` (needs `RS/rs92/nav_gps_vel.c`)
@@ -32,7 +32,7 @@ This is a clone of the https://github.com/rs1729/RS/tree/master/demod/mod
   or with lowpass filter <br />
   `./rs41mod --iq2 --lp <iq_data.wav>` <br />
   For baseband IQ data, use
-  `./rs41mod --IQ <fq> <iq_data.wav>` <br />
+  `./rs41mod --IQ <fq> --lp <iq_data.wav>` <br />
   where `<fq>` is the relative frequency in `-0.5 .. 0.5`;
   e.g. if the receiver is tuned to 403MHz and the (complex) sample rate is 2MHz,
   a signal at 402.5MHz would be -0.5MHz off, i.e. `<fq> = -0.5/2 = -0.25`. <br />
@@ -59,5 +59,10 @@ This is a clone of the https://github.com/rs1729/RS/tree/master/demod/mod
   IQ-decoding is recommended for soft decoding (noisy/spikey FM-signals don't always help soft decision).
   The difference between hard and soft viterbi becomes only apparent at lower SNR. The inner convolutional
   code does most of the error correction. The concatenated outer Reed-Solomon code kicks in only at low SNR.
+
+  soft input:<br />
+  Option `--softin` expects float32 symbols as input, with `s>0` corresponding to `bit=1`.<br />
+  (remark/caution: often soft bits are defined as `bit=0 -> s=+1` and `bit=1 -> s=-1` such that the identity element `0`
+  for addition mod 2 corresponds to the identity element `+1` for multiplication.)
 
 

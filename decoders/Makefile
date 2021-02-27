@@ -3,7 +3,7 @@ CC = gcc
 COPTS = -O3
 
 .PHONY: all
-all: rs41mod rs92mod lms6Xmod meisei100mod dfm09mod m10mod mXXmod imet54mod dft_detect
+all: rs41mod rs92mod lms6Xmod meisei100mod dfm09mod m10mod mXXmod imet54mod dft_detect c34dft c50dft
 
 rs41mod: rs41mod.c demod_mod.o bch_ecc_mod.o
 	$(CC) $(COPTS) -o rs41mod rs41mod.c demod_mod.o bch_ecc_mod.o -lm
@@ -38,6 +38,11 @@ bch_ecc_mod.o: bch_ecc_mod.c bch_ecc_mod.h
 dft_detect: dft_detect.c
 	$(CC) $(COPTS) -o dft_detect dft_detect.c -lm
 
+c50dft: c50dft.c
+	$(CC) $(COPTS) -o c50dft c50dft.c -lm
+
+c34dft: c34dft.c
+	$(CC) $(COPTS) -o c34dft c34dft.c -lm
 
 .PHONY: clean
 clean:

@@ -5,7 +5,7 @@ TIMEOUT=600 # seconds
 
 log_info()
 {
-  echo "$(date +%Y-%m-%d %H:%M:%S) - $1"
+  echo "$(date +%Y-%m-%d\ %H:%M:%S) - $1"
 }
 
 [ -d "$LOG_DIR" ] || mkdir "$LOG_DIR"
@@ -19,14 +19,12 @@ declare -A active_logs
 declare -A active_sondes
 
 while read LINE; do
-  grep -E '^\{.*\}$' <(echo "$LINE") || continue # skip not a json string
+  grep -qE '^\{.*\}$' <(echo "$LINE") || continue # skip not a json string
   id=$(echo "$LINE" | jq -rc '.id|select(.!=null)')
   [ -n "$id" ] || continue # id is not found in json string
   # TODO:  add local filter for DXXXXXXXXX ids
-  if [ -n "${active_logs[$id]}" ]; then
-    echo "$LINE" >> "${LOG_DIR}/${active_logs[$id]}"
-  else
-    log_file=$(find "$LOG_DIR" -iname '*'"$id"'*')
+  [ -n "${active_logs[$id]}" ] || {
+    log_file=$(find "$LOG_DIR" -iname '*'"$id"'*' -printf "%f\n")
     if [ -n "$log_file" ]; then
       active_logs[$id]="$log_file"
       log_info "Using existing log file ${active_logs[$id]}"
@@ -34,12 +32,15 @@ while read LINE; do
       sonde_type=$(echo "$LINE" | jq -rc '.subtype|select(.!=null)')
       [ -n "$sonde_type" ] || sonde_type=$(echo "$LINE" | jq -rc '.type|select(.!=null)')
       sonde_aux=$(echo "$LINE" | jq -rc '.aux|select(.!=null)')
-      [ -n "$sonde_aux" ] || sonde_type="$sonde_type-Ozone"
+      [ -n "$sonde_aux" ] && sonde_type="$sonde_type-Ozone"
       sonde_freq=$(echo "$LINE" | jq -rc '.freq|select(.!=null)')
       active_logs[$id]="$(date +%Y%m%d-%H%M%S)_${id}_${sonde_type}_${sonde_freq}_sonde.log"
       log_info "Opening new log file ${active_logs[$id]}"
     fi
-  fi
+  }
+
+  echo "$LINE" >> "${LOG_DIR}/${active_logs[$id]}"
+
   cur_time="$(date +%s)"
   active_sondes[$id]="$cur_time"
 

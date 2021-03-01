@@ -275,7 +275,7 @@ static void *thd_IF(void *targs) { // pcm_t *pcm, double xlt_fq
     return NULL;
 }
 
-#define FFT_SEC 2
+#define FFT_SEC 5
 #define FFT_FPS 20
 
 static void *thd_FFT(void *targs) {

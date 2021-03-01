@@ -48,10 +48,13 @@ DECIMATE=$((TUNER_SAMPLE_RATE/DEMODULATOR_OUTPUT_FREQ))
 cleanup()
 {
   local children child
-  children="$1 $2 $(get_children_pids $1) $(get_children_pids $2)"
+  children="$1 $2 $3 $(get_children_pids $1) $(get_children_pids $2) $(get_children_pids $3)"
   kill $children &>/dev/null;wait $children &>/dev/null
 }
 
+# This function is not used any longer to avoid dependeny to the csdr
+# Instead iq_server is used now for power scanning (see scan_power2 below)
+# Still I keep the code here as an example of using csdr to calculate signal power
 scan_power()
 {
   ./csdr convert_u8_f | \
@@ -70,6 +73,36 @@ scan_power()
      BEGIN{fstep=sr/bins;fstart=f-sr/2;print fstep;print fstart}
      {printf("%d %.1f\n",fstart+fstep*((NR-1)%bins),$0);
       if(0==(NR%bins)){printf("\n")};fflush()}' | \
+   awk -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
+     function abs(x){return (x<0)?-x:x}
+     BEGIN{idx=1}
+     {if(length($2)!=0){a[idx++]=$2;if(abs($1-outstep*int($1/outstep)<step)){print $0}}
+      else{print; asort(a); if(idx>1){print a[int(idx/2)]} idx=1;};
+      fflush();}' | \
+   awk -v outstep="$SCAN_OUTPUT_STEP" -v nl=$SCAN_POWER_NOISE_LEVEL_INIT -v thr=$SCAN_POWER_THRESHOLD '
+     {if (length($2)!=0){if(int($2)>(nl+thr)){print outstep*int(int($1)/outstep)" "$2;fflush()}}
+      else if(length($1)!=0) {nl=$1}}'
+}
+
+# Power scanning using iq_server.
+# NOTE that the following needs to be changes on the iq_server side for it to work:
+# 1. Set nuber of bins be 4096 instead of 16384 in the iq_base.c
+# -#define HZBIN 100 # hz per bin -> lshift(1, int(log(2400000/100)/log(2))) = 16384
+# +#define HZBIN 400 # hz per bin -> lshift(1, int(log(2400000/400)/log(2))) = 4096
+# 2. Set averaging time to be 5 seconds instead of 2 in the iq_server.c
+# -#define FFT_SEC 2
+# +#define FFT_SEC 5
+scan_power2()
+{
+   (while true; do ./iq_client --fft /dev/stdout; echo; done) | \
+   tee >(
+    awk -v bins=$SCAN_BINS '/^$/{printf("\n")};/^[^#].*/{printf("%.1f ",$2);fflush()}' |
+    awk -v f=$TUNER_FREQ -v bins="$SCAN_BINS" -v sr="$TUNER_SAMPLE_RATE" '
+      {printf("{\"response_type\":\"log_power\",\"samplerate\":%d,\"tuner_freq\":%d,\"result\":\"%s\"}\n", sr, f, $0);
+      fflush()}' | tee /tmp/spect.out | \
+    socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_OUT_PORT,broadcast,reuseaddr
+   ) |
+   awk -v f=$TUNER_FREQ -v sr=$TUNER_SAMPLE_RATE '/^$/{print;fflush();next};/^[^#].*/{printf("%d %.1f\n", int(f+($1*sr)), $2);fflush()}' | \
    awk -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
      function abs(x){return (x<0)?-x:x}
      BEGIN{idx=1}
@@ -223,8 +256,19 @@ pid1=$!
 (while sleep 30; do echo "TIMER30" | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr; done) &
 pid2=$!
 
-trap "cleanup $pid1 $pid2" EXIT INT TERM
+(scan_power2 | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) &
+pid3=$!
+
+trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM
 
 rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
-tee >(scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) |
 ./iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
+
+
+# The code below uses csdr to get power measurements
+# To use this code comment 5 lines above and uncomment lines below
+#trap "cleanup $pid1 $pid2" EXIT INT TERM
+
+#rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
+#tee >(scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) |
+#./iq_server --fft /tmp/fft.out --bo 32 - 2400000 8

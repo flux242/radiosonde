@@ -19,7 +19,7 @@ typedef short i16_t;
 typedef int   i32_t;
 
 
-#define MAX_FQ (4+1)
+#define MAX_FQ (5+1)
 static int blk_sz = 32; // const
 
 

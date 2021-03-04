@@ -298,11 +298,14 @@ while ($line = <$fpi>) {
         my $sats = $json->{"sats"};
         my $satstr = defined $sats ? " Sats:". $sats : "";
 
+        my $bearing = $json->{"heading"};
+        my $bearingstr = defined $bearing ? sprintf(" B=%.0f°", $bearing) : "";
+
         my $bkt = $json->{"bt"};
         my $bktstr = defined $bkt ? $bkt < 65535 ? " BK=" . int($bkt/3600) . "h" . int($bkt/60)%60 . "m" : ' BK=Off' : "";
 
         my $str = sprintf("$mycallsign-15>APRS,TCPIP*:;%-9s*%06dh%s/%sO%03d/%03d/A=%06d!w%s%s!Clb=%.1fm/s%s%s%s%s Type=%s%s%s%s%s%s %s",
-                        $callsign, $hms, $lat, $lon, $course, $speed, $alt, base91_from_decimal($latdoa), base91_from_decimal($londoa), $climb, $pressurestr, $tempstr, $humidstr, $freqstr, $type, $bktstr, $satstr, $battstr, $otg, $framestr, $comment);
+                          $callsign, $hms, $lat, $lon, $course, $speed, $alt, base91_from_decimal($latdoa), base91_from_decimal($londoa), $climb, $pressurestr, $tempstr, $humidstr, $freqstr, $type, $bktstr, $satstr, $battstr, $framestr, $bearingstr, $otg,  $comment);
         print $fpo "$str\n";
 
         if($sock) {

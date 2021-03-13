@@ -99,7 +99,7 @@ scan_power2()
     awk -v bins=$SCAN_BINS '/^$/{printf("\n")};/^[^#].*/{printf("%.1f ",$2);fflush()}' |
     awk -v f=$TUNER_FREQ -v bins="$SCAN_BINS" -v sr="$TUNER_SAMPLE_RATE" '
       {printf("{\"response_type\":\"log_power\",\"samplerate\":%d,\"tuner_freq\":%d,\"result\":\"%s\"}\n", sr, f, $0);
-      fflush()}' | tee /tmp/spect.out | \
+      fflush()}' |
     socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_OUT_PORT,broadcast,reuseaddr
    ) |
    awk -v f=$TUNER_FREQ -v sr=$TUNER_SAMPLE_RATE '/^$/{print;fflush();next};/^[^#].*/{printf("%d %.1f\n", int(f+($1*sr)), $2);fflush()}' | \
@@ -149,11 +149,12 @@ start_decoder()
   local decoder bw
 
   case "$1" in
-    RS41) decoder="./rs41mod --ptu --ecc --crc --json -vv /dev/stdin > /dev/stderr";bw=10 ;;
+    RS41) decoder="./rs41mod --ptu --ecc --crc --json /dev/stdin > /dev/stderr";bw=10 ;;
     RS92) decoder="./rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=10 ;;
     DFM9) decoder="tee >(./dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | ./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=10 ;;
      M10) decoder="./m10mod --ptu --json > /dev/stderr";bw=19.2 ;;
   C34C50) decoder="tee >(./c34dft -d1 --ptu --json /dev/stdin > /dev/stderr) | ./c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=19.2 ;;
+     MRZ) decoder="./mp3h1mod --ptu --ecc --json  dev/stdin > /dev/stderr";bw=12 ;;
        *) ;;
   esac
 

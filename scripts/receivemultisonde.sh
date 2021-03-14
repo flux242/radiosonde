@@ -2,6 +2,25 @@
 #
 # Written by Alexnader K
 #
+# This script receives and decodes several sondes with only one rtl dongle
+#
+# Usage: ./receivemultisonde.sh -f 403405000 -s 2400000 -P 35 -g 40 -t 5
+#        So I set the tuning frequenty in the middle of 10 kHz because I
+#        know that sondes transmit with at least 10 kHz steps. 
+#        Sample rate is the maximum 2400000 Hz to improve SNR
+#        My rtl receiver has 35 PPM
+#        I set gain to 40 but I guess that with recent addition of the automatic
+#        noise floor detection the gain could be set to 0 - automatic gain
+#        Signal threshold is set to 5 - a signal is considered active if its power
+#        is 5dB above the noise signal
+#
+# Script output:
+# - local UDP port 5676 the power measuremnts in json form each 5 seconds:
+#   {"response_type":"log_power","samplerate":2400000,"tuner_freq":403405000,"result":"-77.9 ..."} 
+#   where "result" has SCAN_BINS values.
+# - local UDP port 5678 decoders output in jsong form:
+#   {"type":"RS41","frame":5174,"id":"S3440233", ...}
+
 
 . ./defaults.conf
 
@@ -19,7 +38,7 @@ DECODER_PORT=5678
 
 SLOT_TIMEOUT=10 # i.e 30 seconds *10 = 5 minutes
 SLOT_ACTIVATE_TIME=4 # 4 * 5 seconds = 20 seconds min activity
-MAX_SLOTS=5
+MAX_SLOTS=5 # this value should be MAX_FQ - 1 (MAX_FQ is defined in the iq_base.h)
 
 OPTIND=1 #reset index
 while getopts "ha:p:f:s:g:p:P:t:" opt; do
@@ -52,9 +71,8 @@ cleanup()
   kill $children &>/dev/null;wait $children &>/dev/null
 }
 
-# This function is not used any longer to avoid dependeny to the csdr
-# Instead iq_server is used now for power scanning (see scan_power2 below)
-# Still I keep the code here as an example of using csdr to calculate signal power
+# Power scanning using csdr. This is my older, stable and well tested solution
+# to perform power scanning 
 scan_power()
 {
   ./csdr convert_u8_f | \
@@ -84,7 +102,8 @@ scan_power()
       else if(length($1)!=0) {nl=$1}}'
 }
 
-# Power scanning using iq_server.
+# Power scanning using iq_server. NOT used currently due to stabiltiy issues
+# This solution would be preferrable to avoid dependency to the csdr
 # NOTE that the following needs to be changes on the iq_server side for it to work:
 # 1. Set nuber of bins be 4096 instead of 16384 in the iq_base.c
 # -#define HZBIN 100 # hz per bin -> lshift(1, int(log(2400000/100)/log(2))) = 16384
@@ -257,19 +276,20 @@ pid1=$!
 (while sleep 30; do echo "TIMER30" | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr; done) &
 pid2=$!
 
-(scan_power2 | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) &
-pid3=$!
+# Due to stability issues power measurements using iq_client is deactivated
+#(scan_power2 | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) &
+#pid3=$!
 
-trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM
+#trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM
 
-rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
-./iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
+#rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
+#./iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
 
 
 # The code below uses csdr to get power measurements
 # To use this code comment 5 lines above and uncomment lines below
-#trap "cleanup $pid1 $pid2" EXIT INT TERM
+trap "cleanup $pid1 $pid2" EXIT INT TERM
 
-#rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
-#tee >(scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) |
-#./iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
+rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
+tee >(scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) |
+./iq_server --fft /tmp/fft.out --bo 32 - 2400000 8

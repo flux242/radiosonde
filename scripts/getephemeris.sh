@@ -7,7 +7,7 @@ day=$(date +%j)
 year=$(date +%y)
 
 #filename="brdc${day}0.${year}n.Z"
-filename="auto${day}0.${year}n"
+filename="auto${day}0.${year}n.Z"
 outfile="${1:-$EPHEM_FILE}"
 [ "$outfile" = "-" ] && outfile='/dev/stdout'
 wget --timeout=5 -O/tmp/$filename "ftp://lox.ucsd.edu/rinex/$(date +%Y)/$(date +%j)/$filename"

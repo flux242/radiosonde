@@ -47,7 +47,7 @@ while read LINE; do
   for key in "${!active_sondes[@]}"; do
     (( "$cur_time" > ("${active_sondes[$key]}"+"$TIMEOUT") )) && {
       # sonde is inactive for more that 10 minutes 
-      log_info "Closing log for ${active_sondes[$id]}"
+      log_info "Closing log for $key"
       unset active_sondes[$key]
       unset active_logs[$key]
     }

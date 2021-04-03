@@ -40,6 +40,9 @@ SLOT_TIMEOUT=10 # i.e 30 seconds *10 = 5 minutes
 SLOT_ACTIVATE_TIME=4 # 4 * 5 seconds = 20 seconds min activity
 MAX_SLOTS=5 # this value should be MAX_FQ - 1 (MAX_FQ is defined in the iq_base.h)
 
+IQ_SERVER_PATH="../iq_svcl"
+DECODERS_PATH="../decoders"
+
 OPTIND=1 #reset index
 while getopts "ha:p:f:s:g:p:P:t:" opt; do
   case $opt in
@@ -113,7 +116,7 @@ scan_power()
 # +#define FFT_SEC 5
 scan_power2()
 {
-   (while true; do ./iq_client --fft /dev/stdout; echo; done) | \
+   (while true; do "$IQ_SERVER_PATH"/iq_client --fft /dev/stdout; echo; done) | \
    tee >(
     awk -v bins=$SCAN_BINS '/^$/{printf("\n")};/^[^#].*/{printf("%.1f ",$2);fflush()}' |
     awk -v f=$TUNER_FREQ -v bins="$SCAN_BINS" -v sr="$TUNER_SAMPLE_RATE" '
@@ -142,20 +145,20 @@ decode_sonde()
   local bpf9=$(calc_bandpass_param 9600 48000)
 
   (
-    ./iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
+    "$IQ_SERVER_PATH"/iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
     tee >(
       ./csdr bandpass_fir_fft_cc -$bpf9 $bpf9 0.02 |
       ./csdr fmdemod_quadri_cf | ./csdr limit_ff | ./csdr convert_f_s16 |
       sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
-      ./m10mod --ptu --json > /dev/stderr
+      "$DECODERS_PATH"/m10mod --ptu --json > /dev/stderr
     ) |
     ./csdr bandpass_fir_fft_cc -$bpf3 $bpf3 0.02 |
     ./csdr fmdemod_quadri_cf | ./csdr limit_ff | ./csdr convert_f_s16 |
     sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
-    tee >(./dfm09mod --ptu --ecc --json -vv /dev/stdin > /dev/stderr) \
-        >(./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr) \
-        >(./rs41mod --ptu --ecc --crc --json -vv /dev/stdin > /dev/stderr) \
-        >(./rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr) | \
+    tee >("$DECODERS_PATH"/dfm09mod --ptu --ecc --json -vv /dev/stdin > /dev/stderr) \
+        >("$DECODERS_PATH"/dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr) \
+        >("$DECODERS_PATH"/rs41mod --ptu --ecc --crc --json -vv /dev/stdin > /dev/stderr) \
+        >("$DECODERS_PATH"/rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr) | \
     aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null
   ) &>/dev/stdout | while read LINE; do
       echo "$LINE" | grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' | \
@@ -168,12 +171,12 @@ start_decoder()
   local decoder bw
 
   case "$1" in
-    RS41) decoder="./rs41mod --ptu --ecc --crc --json /dev/stdin > /dev/stderr";bw=10 ;;
-    RS92) decoder="./rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=10 ;;
-    DFM9) decoder="tee >(./dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | ./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=10 ;;
-     M10) decoder="./m10mod --ptu --json > /dev/stderr";bw=19.2 ;;
-  C34C50) decoder="tee >(./c34dft -d1 --ptu --json /dev/stdin > /dev/stderr) | ./c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=19.2 ;;
-     MRZ) decoder="./mp3h1mod --ptu --ecc --json  dev/stdin > /dev/stderr";bw=12 ;;
+    RS41) decoder="$DECODERS_PATH/rs41mod --ptu --ecc --crc --json /dev/stdin > /dev/stderr";bw=10 ;;
+    RS92) decoder="$DECODERS_PATH/rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=10 ;;
+    DFM9) decoder="tee >($DECODERS_PATH/dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | ./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=10 ;;
+     M10) decoder="$DECODERS_PATH/m10mod --ptu --json > /dev/stderr";bw=19.2 ;;
+  C34C50) decoder="tee >($DECODERS_PATH/c34dft -d1 --ptu --json /dev/stdin > /dev/stderr) | ./c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=19.2 ;;
+     MRZ) decoder="$DECODERS_PATH/mp3h1mod --ptu --ecc --json  dev/stdin > /dev/stderr";bw=12 ;;
        *) ;;
   esac
 
@@ -187,14 +190,14 @@ start_decoder()
     }
     [ -s "$EPHEM_FILE" ] || {
       if [ -s "$ALMANAC_FILE" ]; then
-        decoder="./rs92mod -a "$ALMANAC_FILE" --crc --ecc --json /dev/stdin > /dev/stderr"
+        decoder="$DECODERS_PATH/rs92mod -a "$ALMANAC_FILE" --crc --ecc --json /dev/stdin > /dev/stderr"
       else
         decoder="cat /dev/stdin >/dev/null"
       fi
     }
   }
 
-  ./iq_fm --lpbw $bw - 48000 32 --bo 16 |
+  "$IQ_SERVER_PATH"/iq_fm --lpbw $bw - 48000 32 --bo 16 |
   sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
   tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) |
   eval "$decoder"
@@ -202,8 +205,8 @@ start_decoder()
 
 decode_sonde_with_type_detect()
 {
-    ./iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
-    (type=$(./dft_detect --iq - 48000 32 | awk -F':' '{print $1}'); start_decoder "$type") &>/dev/stdout |
+    "$IQ_SERVER_PATH"/iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
+    (type=$("$DECODERS_PATH"/dft_detect --iq - 48000 32 | awk -F':' '{print $1}'); start_decoder "$type") &>/dev/stdout |
     while read LINE; do
       echo "$LINE" | grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' | \
       (flock 200; socat -u - UDP4-DATAGRAM:127.255.255.255:$DECODER_PORT,broadcast,reuseaddr) 200>$MUTEX_LOCK_FILE
@@ -215,18 +218,18 @@ decode_sonde_with_type_detect()
 decode_sonde_iqfm()
 {
   (
-    ./iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
+    "$IQ_SERVER_PATH"/iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
     tee >(
-      ./iq_fm --lpbw 19.2 - 48000 32 --bo 16 |
+      "$IQ_SERVER_PATH"/iq_fm --lpbw 19.2 - 48000 32 --bo 16 |
       sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
-      ./m10mod --ptu --json > /dev/stderr
+      "$DECODERS_PATH"/m10mod --ptu --json > /dev/stderr
     ) |
-    ./iq_fm --lpbw 10.0 - 48000 32 --bo 16 |
+    "$IQ_SERVER_PATH"/iq_fm --lpbw 10.0 - 48000 32 --bo 16 |
     sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
-    tee >(./dfm09mod --ptu --ecc --json -vv /dev/stdin > /dev/stderr) \
-        >(./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr) \
-        >(./rs41mod --ptu --ecc --crc --json -vv /dev/stdin > /dev/stderr) \
-        >(./rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr) | \
+    tee >("$DECODERS_PATH"/dfm09mod --ptu --ecc --json -vv /dev/stdin > /dev/stderr) \
+        >("$DECODERS_PATH"/dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr) \
+        >("$DECODERS_PATH"/rs41mod --ptu --ecc --crc --json -vv /dev/stdin > /dev/stderr) \
+        >("$DECODERS_PATH"/rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr) | \
     aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null
   ) &>/dev/stdout | while read LINE; do
       echo "$LINE" | grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' | \
@@ -283,7 +286,7 @@ pid2=$!
 #trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM
 
 #rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
-#./iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
+#"$IQ_SERVER_PATH"/iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
 
 
 # The code below uses csdr to get power measurements
@@ -292,4 +295,4 @@ trap "cleanup $pid1 $pid2" EXIT INT TERM
 
 rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
 tee >(scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) |
-./iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
+"$IQ_SERVER_PATH"/iq_server --fft /tmp/fft.out --bo 32 - 2400000 8

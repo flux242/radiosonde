@@ -105,8 +105,7 @@ scan_power()
       else if(length($1)!=0) {nl=$1}}'
 }
 
-# Power scanning using iq_server. NOT used currently due to stabiltiy issues
-# This solution would be preferrable to avoid dependency to the csdr
+# Power scanning using iq_server.
 # NOTE that the following needs to be changes on the iq_server side for it to work:
 # 1. Set nuber of bins be 4096 instead of 16384 in the iq_base.c
 # -#define HZBIN 100 # hz per bin -> lshift(1, int(log(2400000/100)/log(2))) = 16384
@@ -114,9 +113,11 @@ scan_power()
 # 2. Set averaging time to be 5 seconds instead of 2 in the iq_server.c
 # -#define FFT_SEC 2
 # +#define FFT_SEC 5
-scan_power2()
+# 3. Continues scanning mode shall be integrated into the iq_server and iq_client.
+#    This feature exist currently only in my repository
+scan_power_iq()
 {
-   (while true; do "$IQ_SERVER_PATH"/iq_client --fft /dev/stdout; echo; done) | \
+   "$IQ_SERVER_PATH"/iq_client --fftc | \
    tee >(
     awk -v bins=$SCAN_BINS '/^$/{printf("\n")};/^[^#].*/{printf("%.1f ",$2);fflush()}' |
     awk -v f=$TUNER_FREQ -v bins="$SCAN_BINS" -v sr="$TUNER_SAMPLE_RATE" '
@@ -280,19 +281,18 @@ pid1=$!
 pid2=$!
 
 # Due to stability issues power measurements using iq_client is deactivated
-#(scan_power2 | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) &
-#pid3=$!
+(scan_power_iq | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) &
+pid3=$!
 
-#trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM
+trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM
 
-#rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
-#"$IQ_SERVER_PATH"/iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
-
+rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
+"$IQ_SERVER_PATH"/iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
 
 # The code below uses csdr to get power measurements
 # To use this code comment 5 lines above and uncomment lines below
-trap "cleanup $pid1 $pid2" EXIT INT TERM
+#trap "cleanup $pid1 $pid2" EXIT INT TERM
 
-rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
-tee >(scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) |
-"$IQ_SERVER_PATH"/iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
+#rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
+#tee >(scan_power | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) |
+#"$IQ_SERVER_PATH"/iq_server --fft /tmp/fft.out --bo 32 - 2400000 8

@@ -32,6 +32,7 @@
 #define OPT_FFT_SERV 1  // server
 #define OPT_FFT_CLSV 2  // server (client request)
 #define OPT_FFT_CLNT 3  // server -> client
+#define OPT_FFT_CLNT_CONT 4  // server -> client
 
 static int option_dbg = 0;
 
@@ -339,6 +340,7 @@ static void *thd_FFT(void *targs) {
     int n_fft = 0;
     int th_used = 0;
     int readSamples = 1;
+    size_t is_fft_status_shown = 0u;
 
     bitQ = 0;
     while ( bitQ != EOF )
@@ -388,23 +390,45 @@ static void *thd_FFT(void *targs) {
                     for (j = 0; j < dsp.DFT.N; j++) avg_rZ[j] /= dsp.DFT.N*(float)sum_n;
                     for (j = 0; j < dsp.DFT.N; j++) avg_db[j] = 20.0*log10(avg_rZ[j]+1e-20);
 
+                    if (0==is_fft_status_shown) {
+                        pthread_mutex_lock( (dsp.thd)->mutex );
+                        fprintf(FPOUT, "<%d: FFT>\n", (dsp.thd)->tn);
+                        pthread_mutex_unlock( (dsp.thd)->mutex );
+                        is_fft_status_shown = 1u;
+                    }
 
-                    pthread_mutex_lock( (dsp.thd)->mutex );
-                    fprintf(FPOUT, "<%d: FFT>\n", (dsp.thd)->tn);
-                    pthread_mutex_unlock( (dsp.thd)->mutex );
-
-                    if ( (dsp.thd)->fft == OPT_FFT_CLNT ) { // send FFT data to client
+                    if ( ((dsp.thd)->fft == OPT_FFT_CLNT_CONT) || ((dsp.thd)->fft == OPT_FFT_CLNT) ) { // send FFT data to client
                         char sendln[LINELEN+1];
                         int sendln_len;
-                        int l;
+                        size_t error_flag = 0u;
                         snprintf(sendln, LINELEN, "# <freq/sr>;<dB>  ##  sr:%d , N:%d\n", dsp.DFT.sr, dsp.DFT.N);
                         sendln_len = strlen(sendln);
-                        l = write(tharg->fd, sendln, sendln_len);
-                        for (j = dsp.DFT.N/2; j < dsp.DFT.N/2 + dsp.DFT.N; j++) {
-                            memset(sendln, 0, LINELEN+1);
+                        if ( write(tharg->fd, sendln, sendln_len) != sendln_len ) {
+                           fprintf(stderr, "error: write socket\n");
+                           error_flag = 1u;
+                        }
+                        for (j = dsp.DFT.N/2; (0 == error_flag) && (j < dsp.DFT.N/2 + dsp.DFT.N); j++) {
+//                            memset(sendln, 0, LINELEN+1);
                             snprintf(sendln, LINELEN, "%+11.8f;%7.2f\n", bin2fq(&(dsp.DFT), j % dsp.DFT.N), avg_db[j % dsp.DFT.N]);
                             sendln_len = strlen(sendln);
-                            l = write(tharg->fd, sendln, sendln_len);
+                            if ( write(tharg->fd, sendln, sendln_len) != sendln_len  ) {
+                               fprintf(stderr, "error: write socket\n");
+                               error_flag = 1u;
+                            }
+                        }
+                        if (0 == error_flag) {
+                            snprintf(sendln, LINELEN, "\n"); //empty string to separate in CONT mode
+                            sendln_len = strlen(sendln);
+                            if ( write(tharg->fd, sendln, sendln_len) != sendln_len ) {
+                               fprintf(stderr, "error: write socket\n");
+                               error_flag = 1u;
+                            }
+                        }
+
+                        if (error_flag) {
+                            close(tharg->fd);
+                            (dsp.thd)->fft = 0;
+                            is_fft_status_shown = 0u;
                         }
                     }
                     else { // save FFT at server
@@ -422,9 +446,9 @@ static void *thd_FFT(void *targs) {
                             fprintf(stderr, "error: open %s\n", fname_fft);
                         }
                     }
-                    if ( (dsp.thd)->fft != OPT_FFT_SERV ) close(tharg->fd);
-
-                    (dsp.thd)->fft = 0;
+                    if ( ((dsp.thd)->fft != OPT_FFT_SERV) &&
+                         ((dsp.thd)->fft != OPT_FFT_CLNT_CONT) ) close(tharg->fd);
+                    if ((dsp.thd)->fft != OPT_FFT_CLNT_CONT ) (dsp.thd)->fft = 0;
                     sum_n = 0;
                 }
 
@@ -702,11 +726,17 @@ int main(int argc, char **argv) {
                 }
                 else if ( strncmp(tcp_buf, "--fft", 5) == 0 ) {
                     char *fname_fft_cl = "db_fft_cl.txt";
-                    int opt_fft = strcmp(tcp_buf, "--fft0") == 0 ? OPT_FFT_CLSV : OPT_FFT_CLNT;
+                    int opt_fft = 0;
+                    if ( 0 == strcmp(tcp_buf, "--fftc") ) {
+                      opt_fft = OPT_FFT_CLNT_CONT;
+                    }
+                    else {
+                      opt_fft = strcmp(tcp_buf, "--fft0") == 0 ? OPT_FFT_CLSV : OPT_FFT_CLNT;
+                    }
                     //close(conn_fd);
                     if ( !tcp_eof )
                     {
-                        if (tn_fft >= 0) {
+                        if ((tn_fft >= 0) && (OPT_FFT_CLNT_CONT != tharg[tn_fft].thd.fft)) {
                             tharg[tn_fft].thd.fft = opt_fft;
                             tharg[tn_fft].fname = fname_fft_cl;
                             tharg[tn_fft].fd = conn_fd;

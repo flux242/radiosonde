@@ -57,14 +57,13 @@ $|=1;
 
 while (@ARGV) {
   $mycallsign = shift @ARGV;
-  $passcode = shift @ARGV;
   $homelat = shift @ARGV;
   $homelon = shift @ARGV;
   $comment = shift @ARGV;
   $filename = shift @ARGV;
 }
 
-(defined $mycallsign and defined $passcode) or die "Missing script arguments\n";
+defined $mycallsign or die "Missing script arguments\n";
 defined $homelat or $homelat = 0.0;
 defined $homelon or $homelon = 0.0;
 defined $comment or $comment= '';
@@ -83,6 +82,20 @@ our $fpo = *STDOUT;
 
 my $line;
 
+sub generate_passcode {
+    my $call = shift;
+    if(!($call =~ /^([A-Z0-9]{1,6})(-\d+|)(\*|)$/)) {
+        die "Callsign $call not properly formatted";
+    };
+    my @callsplit = split('-', $call);
+    my $code = 0x73e2;
+    my $char;
+    my $counter = 0;
+    foreach $char (split //, $callsplit[0]) {
+      $code ^= ord($char) << ( ($counter++ % 2) ? 0:8);
+    }
+    return $code;
+}
 
 # axudp: encodecall: encode single call sign ("AB0CDE-12*") up to 6 letters/numbers, ssid 0..15, optional "*"; last: set in last call sign (dst/via)
 sub encodecall{
@@ -209,7 +222,7 @@ if($udp) {
     # $kissheader = kissmkhead("APRS",uc($mycallsign),"TCPIP*");
     $kissheader = kissmkhead("APRS",uc($mycallsign));
 }
-
+$passcode = generate_passcode($mycallsign);
 print $fpo "user $mycallsign pass $passcode vers \"M0ROZ decoder\" 0v1 filter m/1\n\n";
 $homeaprslat = lat2aprs($homelat);
 $homeaprslon = lon2aprs($homelon);

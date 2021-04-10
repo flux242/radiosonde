@@ -2,32 +2,44 @@
 #
 # Written by Alexnader K
 #
-# This script receives and decodes several sondes with only one rtl dongle
-#
-# Usage: ./receivemultisonde.sh -f 403405000 -s 2400000 -P 35 -g 40 -t 5
-#        So I set the tuning frequenty in the middle of 10 kHz because I
-#        know that sondes transmit with at least 10 kHz steps. 
-#        Sample rate is the maximum 2400000 Hz to improve SNR
-#        My rtl receiver has 35 PPM
-#        I set gain to 40 but I guess that with recent addition of the automatic
-#        noise floor detection the gain could be set to 0 - automatic gain
-#        Signal threshold is set to 5 - a signal is considered active if its power
-#        is 5dB above the noise signal
-#
-# Script output:
-# - local UDP port 5676 the power measuremnts in json form each 5 seconds:
-#   {"response_type":"log_power","samplerate":2400000,"tuner_freq":403405000,"result":"-77.9 ..."} 
-#   where "result" has SCAN_BINS values.
-# - local UDP port 5678 decoders output in jsong form:
-#   {"type":"RS41","frame":5174,"id":"S3440233", ...}
 
+show_usage()
+{
+cat <<HEREDOC
+This script receives and decodes several sondes with only one rtl dongle
+
+Usage: $(basename $0) -f 403405000 -s 2400000 -P 35 -g 40 -t 5
+       - I set the tuning frequenty in the middle of 10 kHz because I
+         know that sondes transmit with at least 10 kHz steps. 
+       - Sample rate is the maximum 2400000 Hz to improve SNR
+       - My rtl receiver has 35 PPM
+       - I set gain to 40 but I guess that with recent addition of the automatic
+         noise floor detection the gain could be set to 0 - automatic gain
+       - Signal threshold is set to 5 - a signal is considered active if its power
+         is 5dB above the noise signal
+
+Script output:
+- local UDP port 5676 the power measuremnts in json form each 5 seconds:
+  {"response_type":"log_power","samplerate":2400000,"tuner_freq":403405000,"result":"-77.9 ..."} 
+  where "result" has SCAN_BINS values.
+- local UDP port 5678 decoders output in json form:
+  {"type":"RS41","frame":5174,"id":"S3440233", ...}
+HEREDOC
+}
+
+show_error_exit()
+{
+  echo "$1" >&2
+  echo "For help: $(basename $0) -h"
+  exit 2
+}
 
 . ./defaults.conf
 
 SCAN_BINS=4096
 SCAN_OUTPUT_STEP=10000  # in Hz
 SCAN_POWER_NOISE_LEVEL_INIT=-69 # initial noise level
-SCAN_POWER_THRESHOLD=5 # signal is detected if its power more than (noise level + this value) 
+SCAN_POWER_THRESHOLD=5 # signal is detected if its power is above noise level + this value
 
 SCANNER_OUT_PORT=5676
 SCANNER_COM_PORT=5677
@@ -43,7 +55,7 @@ DECODERS_PATH="../decoders"
 OPTIND=1 #reset index
 while getopts "ha:p:f:s:g:p:P:t:" opt; do
   case $opt in
-     h)  show_usage $(basename $0); exit 0; ;;
+     h)  show_usage; exit 0; ;;
      a)  address="$OPTARG" ;;  # not used atm
      p)  port="$OPTARG" ;;     # not used atm
      f)  TUNER_FREQ="$OPTARG" ;;
@@ -57,7 +69,7 @@ while getopts "ha:p:f:s:g:p:P:t:" opt; do
 done
 shift "$((OPTIND-1))"
  
-[ ! "$TUNER_FREQ" -eq 0 ] || show_error_exit "Wrong frequency"
+[ -n "$TUNER_FREQ" ] && [ ! "$TUNER_FREQ" -eq 0 ] || show_error_exit "Wrong frequency"
 [ ! "$TUNER_SAMPLE_RATE" -eq 0 ] || show_error_exit "Wrong sample rate"
 
 DECIMATE=$((TUNER_SAMPLE_RATE/DEMODULATOR_OUTPUT_FREQ))

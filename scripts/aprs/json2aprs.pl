@@ -6,7 +6,7 @@
 # Usage:
 #
 # nc -luk 5678 | \
-# ./aprs/json2aprs.pl MYCALLSIGN MYPASS MYLAT MYLON " My comment srting" | 
+# ./aprs/json2aprs.pl MYCALLSIGN MYLAT MYLON " My comment srting" | 
 # socat -u - UDP4-DATAGRAM:0.0.0.0:30448,broadcast,reuseaddr
 #
 # It will receive decoded radiosonde json strings broadcasted on the UDP port 5678,
@@ -21,7 +21,7 @@
 # #!/bin/bash
 #
 # nc -luk 5678 | ./aprs/json2aprsfilter.pl MYLAT MYLON | \
-# ./aprs/json2aprs.pl MYCALLSIGN MYPASS MYLAT MYLON " My comment srting"
+# ./aprs/json2aprs.pl MYCALLSIGN MYLAT MYLON " My comment srting"
 # ```
 # in this case json2aprs.pl will send its output to the radiosondy.info port 14590
 # where json2aprs.pl input is filtered first with the json2aprsfilter.pl script

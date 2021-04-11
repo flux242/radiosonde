@@ -78,7 +78,7 @@ where *aprsfakeclient.sh* is
 #!/bin/bash
 
 nc -luk 5678 | ./aprs/json2aprsfilter.pl 55.66 11.12 | \
-./aprs/json2aprs.pl N0BODY 13981 55.66 11.12 "receivemultisonde.sh"
+./aprs/json2aprs.pl N0BODY 55.66 11.12 "receivemultisonde.sh"
 ```
 
 decoded JSON strings needs to be filtered first before sending to the sever!

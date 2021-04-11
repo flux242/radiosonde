@@ -4,10 +4,10 @@
 while read LINE; do
   IFS=$'\n' a=( $(echo "$LINE" | jq --unbuffered -r '.samplerate, .tuner_freq, .result') )
   samplerate=${a[0]};tuner_freq=${a[1]};result=${a[2]}
-  scan_bins=$(echo "$result" | awk '{print NF}')
+  scan_bins=$(echo "$result" | awk -F',' '{print NF}')
   [[ -n "$result" ]] && [[ -n "$samplerate" ]] && [[ -n "$tuner_freq" ]] && {
     echo "$result" | 
-    awk -v tf="$tuner_freq" -v sr="$samplerate" -v sb="$scan_bins" '
+    awk -F',' -v tf="$tuner_freq" -v sr="$samplerate" -v sb="$scan_bins" '
       {
         fstart=tf-(sr/2); fstep=sr/sb; i=1;
         while (i<=NF) {print int(fstart+int((i-1)*fstep))" "$i;++i}

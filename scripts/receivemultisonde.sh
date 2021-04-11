@@ -95,15 +95,16 @@ cleanup()
 #    This feature exist currently only in my repository
 scan_power_iq()
 {
-   "$IQ_SERVER_PATH"/iq_client --fftc | \
+   "$IQ_SERVER_PATH"/iq_client --fftc /dev/stdout | \
    tee >(
-    awk -v bins=$SCAN_BINS '/^$/{printf("\n")};/^[^#].*/{printf("%.1f ",$2);fflush()}' |
     awk -v f=$TUNER_FREQ -v bins="$SCAN_BINS" -v sr="$TUNER_SAMPLE_RATE" '
       {printf("{\"response_type\":\"log_power\",\"samplerate\":%d,\"tuner_freq\":%d,\"result\":\"%s\"}\n", sr, f, $0);
       fflush()}' |
     socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_OUT_PORT,broadcast,reuseaddr
    ) |
-   awk -v f=$TUNER_FREQ -v sr=$TUNER_SAMPLE_RATE '/^$/{print;fflush();next};/^[^#].*/{printf("%d %.1f\n", int(f+($1*sr)), $2);fflush()}' | \
+   awk -F',' -v f=$TUNER_FREQ -v sr=$TUNER_SAMPLE_RATE -v bins=$SCAN_BINS '
+     BEGIN{fstep=sr/bins;fstart=f-sr/2;}
+     { for(i=1;i<=NF;++i){printf("%d %.2f\n", fstart+fstep*(i-1), $i)};fflush()}' | \
    awk -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
      function abs(x){return (x<0)?-x:x}
      BEGIN{idx=1}

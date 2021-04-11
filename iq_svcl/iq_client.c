@@ -13,7 +13,6 @@
 
 #include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 
 #include "iq_svcl.h"
 
@@ -27,51 +26,6 @@ static int send_len, recv_len;
 static char sendln[LINELEN+1];
 static char recvln[LINELEN+1];
 
-
-static ssize_t readLine(int fd, void *buffer, size_t n)
-{
-    ssize_t numRead;                    /* # of bytes fetched by last read() */
-    size_t totRead;                     /* Total bytes read so far */
-    char *buf;
-    char ch;
-
-    if (n == 0 || buffer == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    buf = buffer;                       /* No pointer arithmetic on "void *" */
-    totRead = 0;
-
-    for (;;) {
-        numRead = read(fd, &ch, 1);
-
-        if (numRead == -1) {
-            if (errno == EINTR)         /* Interrupted --> restart read() */
-                continue;
-            else
-                return -1;              /* Some other error */
-
-        } else if (numRead == 0) {      /* EOF */
-            if (totRead == 0)           /* No bytes read; return 0 */
-                return 0;
-            else                        /* Some bytes read; add '\0' */
-                break;
-
-        } else {                        /* 'numRead' must be 1 if we get here */
-            if (totRead < n - 1) {      /* Discard > (n - 1) bytes */
-                totRead++;
-                *buf++ = ch;
-            }
-
-            if (ch == '\n')
-                break;
-        }
-    }
-
-    *buf = '\0';
-    return totRead;
-}
 
 int main(int argc, char *argv[]) {
 
@@ -104,8 +58,8 @@ int main(int argc, char *argv[]) {
             if (*argv) {
                 fname_fft = *argv;
             }
-            else fname_fft = "/dev/stdout";
-            re = 3;
+            else fname_fft = "-";
+            re = 2;
         }
         else if (strcmp(*argv, "--fft") == 0) {
             sprintf(sendln, "%s", "--fft");
@@ -237,32 +191,6 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "error: open %s\n", fname_fft);
                 }
 
-            }
-            else if ( re == 3 )
-            {
-                // fft data
-                FILE *fpo = fopen(fname_fft, "w");
-                if (fpo != NULL) {
-                    memset(recvln, 0, LINELEN+1);
-
-                    while ((recv_len = readLine(sock_fd, recvln, LINELEN)) > 0) {
-                        // TODO: sigterm handling is needed because this loop is endless
-                        if ('#' == recvln[0]) continue; // skip the legend
-                        len = fwrite(recvln, recv_len, 1, fpo);
-                        fflush(fpo);
-                        if (len != 1) {
-                            fprintf(stderr, "error: write  %d blocks\n", len);
-                            break;
-                        }
-                    }
-                    if (recv_len < 0) {
-                        fprintf(stderr, "error: read socket\n");
-                    }
-                    fclose(fpo);
-                }
-                else {
-                    fprintf(stderr, "error: open %s\n", fname_fft);
-                }
             }
         }
 

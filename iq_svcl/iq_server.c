@@ -341,6 +341,7 @@ static void *thd_FFT(void *targs) {
     int th_used = 0;
     int readSamples = 1;
     size_t is_fft_status_shown = 0u;
+    char sendln[LINELEN+1];
 
     bitQ = 0;
     while ( bitQ != EOF )
@@ -392,34 +393,42 @@ static void *thd_FFT(void *targs) {
 
                     if (0==is_fft_status_shown) {
                         pthread_mutex_lock( (dsp.thd)->mutex );
-                        fprintf(FPOUT, "<%d: FFT>\n", (dsp.thd)->tn);
+                        if ((dsp.thd)->fft != OPT_FFT_CLNT_CONT) {
+                            fprintf(FPOUT, "<%d: FFT>\n", (dsp.thd)->tn);
+                        }
+                        else {
+                            fprintf(FPOUT, "<%d: FFTC>\n", (dsp.thd)->tn);
+                        }
                         pthread_mutex_unlock( (dsp.thd)->mutex );
                         is_fft_status_shown = 1u;
                     }
 
-                    if ( ((dsp.thd)->fft == OPT_FFT_CLNT_CONT) || ((dsp.thd)->fft == OPT_FFT_CLNT) ) { // send FFT data to client
-                        char sendln[LINELEN+1];
+                    if ( (dsp.thd)->fft == OPT_FFT_CLNT ) { // send FFT data to client
                         int sendln_len;
-                        size_t error_flag = 0u;
+                        int l;
                         snprintf(sendln, LINELEN, "# <freq/sr>;<dB>  ##  sr:%d , N:%d\n", dsp.DFT.sr, dsp.DFT.N);
                         sendln_len = strlen(sendln);
-                        if ( write(tharg->fd, sendln, sendln_len) != sendln_len ) {
-                           fprintf(stderr, "error: write socket\n");
-                           error_flag = 1u;
-                        }
-                        for (j = dsp.DFT.N/2; (0 == error_flag) && (j < dsp.DFT.N/2 + dsp.DFT.N); j++) {
-//                            memset(sendln, 0, LINELEN+1);
+                        l = write(tharg->fd, sendln, sendln_len);
+                        for (j = dsp.DFT.N/2; j < dsp.DFT.N/2 + dsp.DFT.N; j++) {
+                            memset(sendln, 0, LINELEN+1);
                             snprintf(sendln, LINELEN, "%+11.8f;%7.2f\n", bin2fq(&(dsp.DFT), j % dsp.DFT.N), avg_db[j % dsp.DFT.N]);
                             sendln_len = strlen(sendln);
-                            if ( write(tharg->fd, sendln, sendln_len) != sendln_len  ) {
-                               fprintf(stderr, "error: write socket\n");
-                               error_flag = 1u;
-                            }
+                            l = write(tharg->fd, sendln, sendln_len);
                         }
-                        if (0 == error_flag) {
-                            snprintf(sendln, LINELEN, "\n"); //empty string to separate in CONT mode
+                    }
+                    else if ((dsp.thd)->fft == OPT_FFT_CLNT_CONT) {
+                        int sendln_len;
+                        size_t error_flag = 0u;
+                        for (j = dsp.DFT.N/2; (0 == error_flag) && (j < dsp.DFT.N/2 + dsp.DFT.N); j++) {
+                            snprintf(sendln, LINELEN, "%.2f", avg_db[j % dsp.DFT.N]);
+                            if (j < (dsp.DFT.N/2 + dsp.DFT.N)-1) {
+                                snprintf(sendln+strlen(sendln), LINELEN, ",");
+                            }
+                            else {
+                                snprintf(sendln+strlen(sendln), LINELEN, "\n");
+                            }
                             sendln_len = strlen(sendln);
-                            if ( write(tharg->fd, sendln, sendln_len) != sendln_len ) {
+                            if ( write(tharg->fd, sendln, sendln_len) != sendln_len  ) {
                                fprintf(stderr, "error: write socket\n");
                                error_flag = 1u;
                             }

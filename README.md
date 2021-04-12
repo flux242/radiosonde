@@ -85,6 +85,6 @@ decoded JSON strings needs to be filtered first before sending to the sever!
 
 ## CPU usage
 Picture below shows receiving 3 and then 4 sondes at the same time with my Celeron n5000 server
-[CPU usage](/pics/cpuusage.png)
+![CPU usage](/pics/cpuusage.png)
 
 so, receiving 5 sondes at the same time is the maximum.

@@ -52,17 +52,8 @@ int main(int argc, char *argv[]) {
         else if (strcmp(*argv, "--fft0") == 0) {
             sprintf(sendln, "%s", "--fft0");
         }
-        else if (strcmp(*argv, "--fftc") == 0) {
-            sprintf(sendln, "%s", "--fftc");
-            ++argv;
-            if (*argv) {
-                fname_fft = *argv;
-            }
-            else fname_fft = "-";
-            re = 2;
-        }
-        else if (strcmp(*argv, "--fft") == 0) {
-            sprintf(sendln, "%s", "--fft");
+        else if ((strcmp(*argv, "--fft") == 0) || (strcmp(*argv, "--fftc") == 0)) {
+            sprintf(sendln, "%s", *argv);
             ++argv;
             if (*argv) {
                 fname_fft = *argv;

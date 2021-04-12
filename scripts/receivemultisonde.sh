@@ -104,7 +104,7 @@ scan_power_iq()
    ) |
    awk -F',' -v f=$TUNER_FREQ -v sr=$TUNER_SAMPLE_RATE -v bins=$SCAN_BINS '
      BEGIN{fstep=sr/bins;fstart=f-sr/2;}
-     { for(i=1;i<=NF;++i){printf("%d %.2f\n", fstart+fstep*(i-1), $i)};fflush()}' | \
+     { for(i=1;i<=NF;++i){printf("%d %.2f\n", fstart+fstep*(i-1), $i)};print;fflush()}' | \
    awk -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
      function abs(x){return (x<0)?-x:x}
      BEGIN{idx=1}
@@ -206,7 +206,7 @@ pid1=$!
 (while sleep 30; do echo "TIMER30" | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr; done) &
 pid2=$!
 
-(scan_power_iq | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) &
+(sleep 5;scan_power_iq | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) &
 pid3=$!
 
 trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM

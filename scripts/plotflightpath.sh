@@ -1,13 +1,26 @@
 #!/bin/bash
 
-[ -e "$1" ] || {
-  echo "sonde log file in json format $1 does not exist" > /dev/stderr
-  exit 1
+[ -t 0 ] && {
+  # if stdin is not connected to a pipe then check if a input file name is given
+  [ -e "$1" ] || {
+    echo "sonde log file in json format $1 does not exist" > /dev/stderr
+    exit 1
+  }
+}
+
+TMPFILE="/dev/null"
+
+[ ! -t 0 ] && {
+  # to make it possible to get data from /dev/stdin I copy the input
+  # into an intermediate temp file because file content is read twice
+  TMPFILE=$(mktemp -t $(basename $0).XXXXXXXXXX)
+  #  echo "$TMPFILE"
+  trap "rm -f $TMPFILE " EXIT INT TERM
 }
 
 # gnuplot does automatic scaling of axis without taking aspect ratio into account
 # so here goes a complex calculation of x and y ranges to have x/y aspect ratio be 1
-range=$(grep -E '^\{.*\}\s*$' "$1" | jq -rc 'select(.lat)|[ .lat, .lon, .alt ]|"\(.[0]),\(.[1]),\(.[2])"' |
+range=$(grep -E '^\{.*\}\s*$' "$1" | tee "$TMPFILE" | jq -rc 'select(.lat)|[ .lat, .lon, .alt ]|"\(.[0]),\(.[1]),\(.[2])"' |
 awk -i ./latlon-spherical.awk -F',' ' \
 function abs(val){if(val<0.0){return -val}else{return val}}
 {
@@ -26,7 +39,8 @@ END{
   }
 }')
 
-grep -E '^\{.*\}\s*$' "$1" | jq -rc 'select(.lat)|[ .lat, .lon, .alt ]|"\(.[0]),\(.[1]),\(.[2])"' |
+[ -f "$TMPFILE" ] || TMPFILE=$1
+grep -E '^\{.*\}\s*$' "$TMPFILE" | jq -rc 'select(.lat)|[ .lat, .lon, .alt ]|"\(.[0]),\(.[1]),\(.[2])"' |
 awk -i ./latlon-spherical.awk -F',' '{if(0==length(flag)){flag=1;lat0=$1;lon0=$2};print lla2enu($1, $2, $3, lat0, lon0, 0.0)}' |
 awk '{print}END{print "";fflush();system("sleep 1000000")}' |
 ~/bin/gp/gnuplotblock.sh "$range;0:35000" 'Flight Path;impulses lw 1 palette;;xyz'

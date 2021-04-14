@@ -9,7 +9,7 @@ As far as the sondes decoder were already written by Zilog80 I only needed a scr
 First, I've written a simple script that would multiplex the IQ samples received from the rtl-sdr dongle and then would shift and filter baseband signal using csdr framework. It worked to some extent but wasn't very flexible. And then Zilog80 told me about his new slicer - *iq_server*. After some iterations and improvements the *receivemultisonde.sh* script was ready.
 
 ## receivemultisonde.sh
-This script is used to receive multiple sondes at a time by scanning baseband signal. Only one 
+This script is used to receive multiple sondes at a time by scanning baseband signal.
 
 Main advantages over aforementioned frameworks:
 - Simplicity. It's only about 170 lines of code!
@@ -23,11 +23,11 @@ Main advantages over aforementioned frameworks:
 ```
 ./receivemultisonde.sh -f 403405000 -s 2400000 -P 35 -g 40 -t 5
 ```
-In this example I tune the 403405000 Hz frequency to receive sondes between 40230000 and 404500000 Hz. In my region almost all sondes are transmiting within this range. To receive over wider range I'd need either a hardware that has wider baseband (6MHz would cover up the whole range available for weather radiosondes) or I'd need multiple rtl-sdr sondes. In the latter case 2 or 3 dongles would be needed to cover up 6MHz. For each dongle a separate instance of receivemultisonde.sh needs to be started with different tune frequencies. As far as this solution would require additional hardware like splitters and signal amplifiers (or multiple antennas), I never tried it. Additionally several computers would be needed because receiving 5 sondes at the same time is the maximum I can achieve on my server equipped with Intel Celeron n5000. Then the script itself needs to be enhanced a bit - there should be a MIN and MAX frequencies defined so that multiple dongles do not overlap.
+In this example I tune to the 403405000 Hz frequency to receive sondes between 40230000 and 404500000 Hz. In my region almost all sondes are transmiting within this range. To receive over wider range I'd need either a hardware that has wider baseband (6MHz would cover up the whole range available for weather radiosondes) or I'd need multiple rtl-sdr sondes. In the latter case 2 or 3 dongles would be needed to cover up 6MHz. For each dongle a separate instance of receivemultisonde.sh needs to be started with different tune frequencies. As far as this solution would require additional hardware like splitters and signal amplifiers (or multiple antennas), I never tried it. Additionally several computers would be needed because receiving 5 sondes at the same time is the maximum I can achieve on my server equipped with Intel Celeron n5000. Then the script itself needs to be enhanced a bit - there should be a MIN and MAX frequencies defined so that multiple dongles do not overlap.
 
 After starting the script it will automatically scan the frequency range on the 10kHz borders. So, if the sampling rate is set as in the example above to 2400000, then it will scan 240 different frequencies. That’s why I tune somewhere in the middle of a 10kHz. This solution is much easier to implement as to go over all peaks in the spectrum.
 
-If a peak is detected on a 10kHz border a slot on the *iq_server* will be allocated until a signal vanishes. The script automatically adjusts to the signal noise floor, so the slot is allocated when the peak is bigger than current noise floor level + the threshold defined by the script's '-t' parameter (its 5dB in the example above). There's maximum number of slots defined which should correlate to the one defined for the *iq_server*. Currently it is 5 because I cannot receive more than 5 sondes at the same time anyway.
+If a peak is detected on a 10kHz border the *iq_server* will allocate a slot for it until that signal vanishes. The script automatically adjusts to the signal noise floor, so the slot is allocated when the peak is bigger than current noise floor level + the threshold defined by the script's '-t' parameter (its 5dB in the example above). There's maximum number of slots defined which should correlate to the one defined for the *iq_server*. Currently it is 5 because I cannot receive more than 5 sondes at the same time anyway.
 
 If detected peak is a sonde then the script will broadcast JSON formatted strings on the local UPD port 5678. So I can check the output using: 
 ```
@@ -88,3 +88,7 @@ Picture below shows receiving 3 and then 4 sondes at the same time with my Celer
 ![CPU usage](/pics/cpuusage.png)
 
 so, receiving 5 sondes at the same time is the maximum.
+
+## Possible improvements
+- add a timer to free a slot if no sonde is detected within specified time by dft_detect
+- add MIN and MAX frequencies parameters to exclude aliasing on the left side and also make it ready for multi-dongle usage scenario

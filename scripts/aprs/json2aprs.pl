@@ -280,6 +280,7 @@ while ($line = <$fpi>) {
         my $course = $json->{"heading"};
 
         my $callsign = $json->{"id"};
+        $callsign =~ s/DFM-/D/g; # Object names with '-' aren't allowed with APRS
 
         my $elevation = `./getelevation.pl $json->{"lat"} $json->{"lon"} 2>/dev/null`;
         my $otg = length($elevation) ? " OG:" . int($json->{"alt"}-$elevation) ."m" : "";

@@ -123,9 +123,9 @@ start_decoder()
   case "$1" in
     RS41) decoder="$DECODERS_PATH/rs41mod --ptu --ecc --crc --json /dev/stdin > /dev/stderr";bw=10 ;;
     RS92) decoder="$DECODERS_PATH/rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=10 ;;
-    DFM9) decoder="tee >($DECODERS_PATH/dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | ./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=10 ;;
+    DFM9) decoder="tee >($DECODERS_PATH/dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | "$DECODERS_PATH"/dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=10 ;;
      M10) decoder="$DECODERS_PATH/m10mod --ptu --json > /dev/stderr";bw=19.2 ;;
-  C34C50) decoder="tee >($DECODERS_PATH/c34dft -d1 --ptu --json /dev/stdin > /dev/stderr) | ./c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=19.2 ;;
+  C34C50) decoder="tee >($DECODERS_PATH/c34dft -d1 --ptu --json /dev/stdin > /dev/stderr) | "$DECODERS_PATH"/c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=19.2 ;;
      MRZ) decoder="$DECODERS_PATH/mp3h1mod --ptu --ecc --json  dev/stdin > /dev/stderr";bw=12 ;;
        *) ;;
   esac

@@ -106,9 +106,8 @@ scan_power_iq()
      BEGIN{fstep=sr/bins;fstart=f-sr/2;}
      { for(i=1;i<=NF;++i){printf("%d %.2f\n", fstart+fstep*(i-1), $i)};print;fflush()}' | \
    awk -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
-     function abs(x){return (x<0)?-x:x}
      BEGIN{idx=1}
-     {if(length($2)!=0){a[idx++]=$2;if(abs($1-outstep*int($1/outstep)<step)){print $0}}
+     {if(length($2)!=0){a[idx++]=$2;if(($1-outstep*int($1/outstep))<step){print $0}}
       else{print; asort(a); if(idx>1){print a[int(idx/2)]} idx=1;};
       fflush();}' | \
    awk -v outstep="$SCAN_OUTPUT_STEP" -v nl=$SCAN_POWER_NOISE_LEVEL_INIT -v thr=$SCAN_POWER_THRESHOLD '

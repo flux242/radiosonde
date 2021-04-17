@@ -34,6 +34,13 @@ show_error_exit()
   exit 2
 }
 
+debug()
+{
+  [ -n "$1" ] && {
+    echo "$@" | socat -u - UDP4-DATAGRAM:127.255.255.255:$DEBUG_PORT,broadcast,reuseaddr
+  }
+}
+
 . ./defaults.conf
 
 SCAN_BINS=4096
@@ -44,6 +51,7 @@ SCAN_POWER_THRESHOLD=5 # signal is detected if its power is above noise level + 
 SCANNER_OUT_PORT=5676
 SCANNER_COM_PORT=5677
 DECODER_PORT=5678
+DEBUG_PORT=5675
 
 SLOT_TIMEOUT=10 # i.e 30 seconds *10 = 5 minutes
 SLOT_ACTIVATE_TIME=4 # 4 * 5 seconds = 20 seconds min activity
@@ -158,7 +166,7 @@ decode_sonde_with_type_detect()
     (type=$("$DECODERS_PATH"/dft_detect --iq - 48000 32 | awk -F':' '{print $1}'); start_decoder "$type") &>/dev/stdout |
     while read LINE; do
       echo "$LINE" | grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' | \
-      (flock 200; socat -u - UDP4-DATAGRAM:127.255.255.255:$DECODER_PORT,broadcast,reuseaddr) 200>$MUTEX_LOCK_FILE
+      socat -u - UDP4-DATAGRAM:127.255.255.255:$DECODER_PORT,broadcast,reuseaddr
     done
 }
 
@@ -170,13 +178,13 @@ declare -A slots   # active slots
   case "$LINE" in
     TIMER30)
        for freq in "${!actfreq[@]}"; do 
-echo "timer: actfreq[$freq] is ${actfreq[$freq]}" >> /tmp/debug.out
+         debug "timer: actfreq[$freq] is ${actfreq[$freq]}"
          actfreq[$freq]=$((actfreq[$freq]-1))
          [ "${actfreq[$freq]}" -gt "$SLOT_TIMEOUT" ] && actfreq[$freq]=$SLOT_TIMEOUT
          if [ "${actfreq[$freq]}" -eq 0 ]; then
            # deactivate slot
            [ -z "${slots[$freq]}" ] || {
-echo "Deactivating slot $slot with freq $freq" >> /tmp/debug.out
+             debug "Deactivating slot $slot with freq $freq"
              cleanup "${slots[$freq]}"
              unset slots[$freq]
            }
@@ -184,14 +192,14 @@ echo "Deactivating slot $slot with freq $freq" >> /tmp/debug.out
          elif [ "${actfreq[$freq]}" -ge $SLOT_ACTIVATE_TIME ]; then
            # activate slot
            [ -z "${slots[$freq]}" ] && [ "${#slots[@]}" -lt $MAX_SLOTS ] && {
-echo "Activating slot $slot with freq $freq" >> /tmp/debug.out
+             debug "Activating slot $slot with freq $freq"
              decode_sonde_with_type_detect "$freq" &
              slots[$freq]=$!
            }
          fi
        done
-echo "active slots: ${!slots[@]}" >> /tmp/debug.out
-echo "----------------------------------------" >> /tmp/debug.out
+       debug "active slots: ${!slots[@]}"
+       debug "----------------------------------------"
        ;;
     *) freq="${LINE% *}"
        [ -z "${_FREQ_BLACK_LIST[$freq]}" ] && {

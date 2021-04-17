@@ -172,10 +172,8 @@ decode_sonde_with_type_detect()
 {
     "$IQ_SERVER_PATH"/iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
     (type=$("$DECODERS_PATH"/dft_detect --iq - 48000 32 | awk -F':' '{print $1}'); start_decoder "$type") &>/dev/stdout |
-    while read LINE; do
-      echo "$LINE" | grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' | \
-      socat -u - UDP4-DATAGRAM:127.255.255.255:$DECODER_PORT,broadcast,reuseaddr
-    done
+    grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' |
+    socat -u - UDP4-DATAGRAM:127.255.255.255:$DECODER_PORT,broadcast,reuseaddr
 }
 
 

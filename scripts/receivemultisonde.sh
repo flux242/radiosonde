@@ -116,11 +116,19 @@ scan_power_iq()
    awk -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
      BEGIN{idx=1}
      {if(length($2)!=0){a[idx++]=$2;if(($1-outstep*int($1/outstep))<step){print $0}}
-      else{print; asort(a); if(idx>1){print a[int(idx/2)]} idx=1;};
+      else{print;if(idx>1){asort(a);print a[int(idx/2)]} idx=1;};
       fflush();}' | \
    awk -v outstep="$SCAN_OUTPUT_STEP" -v nl=$SCAN_POWER_NOISE_LEVEL_INIT -v thr=$SCAN_POWER_THRESHOLD '
      {if (length($2)!=0){if(int($2)>(nl+thr)){print outstep*int(int($1)/outstep)" "$2;fflush()}}
       else if(length($1)!=0) {nl=$1}}'
+# This awk command taxes CPU a bit more but it chooses closest freq to the SCAN_OUTPUT_STEP
+# by looking not only above the SCAN_OUTPUT_STEP like it's done above but also below
+# awk  -v outstep="$SCAN_OUTPUT_STEP" -v step=$((TUNER_SAMPLE_RATE/SCAN_BINS)) '
+#    BEGIN{idx=1}
+#    {if(length($2)!=0){a[idx++]=$2;intf=outstep*int($1/outstep);d=$1-intf;if(d<step){if(length(pr)){split(pr,pra," ");if(intf-pra[1]<d){print pr}else{print $0}}else{print $0}}}
+#     else{print;if(idx>1){asort(a);print a[int(idx/2)]} idx=1;};
+#     fflush();pr=$0}' | \
+#     }'
 }
 
 start_decoder()

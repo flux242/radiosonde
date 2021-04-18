@@ -13,7 +13,7 @@ This script is used to receive multiple sondes at a time by scanning baseband si
 
 Main advantages over aforementioned frameworks:
 - Simplicity. It's only about 170 lines of code!
-- No heavy dependencies: it only depends on the rlt-sdr package, *iq_server* (in my repo), decoders(in my repo), gawk, bash, socat, jq
+- No heavy dependencies: it only depends on the *rlt-sdr* package, *iq_server* (in this repo), *decoders*(in this repo), *gawk*, *bash*, *socat*, *jq*
 - Easy to enhance. For example to add Russian MRZ sondes I just added a single line of code!
 - Modular.
 
@@ -28,6 +28,8 @@ In this example I tune to the 403405000 Hz frequency to receive sondes between 4
 After starting the script it will automatically scan the frequency range on the 10kHz borders. So, if the sampling rate is set as in the example above to 2400000, then it will scan 240 different frequencies. That’s why I tune somewhere in the middle of a 10kHz. This solution is much easier to implement as to go over all peaks in the spectrum.
 
 If a peak is detected on a 10kHz border the *iq_server* will allocate a slot for it until that signal vanishes. The script automatically adjusts to the signal noise floor, so the slot is allocated when the peak is bigger than current noise floor level + the threshold defined by the script's '-t' parameter (its 5dB in the example above). There's maximum number of slots defined which should correlate to the one defined for the *iq_server*. Currently it is 5 because I cannot receive more than 5 sondes at the same time anyway.
+
+If detected signal isn't recognized as a sonde within 60 seconds then its slot will be deallocated. This can be usefull if all slots are allocated but one of signals isn't a sonde. And at the same time there is another sonde signal which is actively sending but can't be received because there's no free slots for it.
 
 If detected peak is a sonde then the script will broadcast JSON formatted strings on the local UPD port 5678. So I can check the output using: 
 ```

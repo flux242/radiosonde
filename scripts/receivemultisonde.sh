@@ -171,7 +171,11 @@ start_decoder()
 decode_sonde_with_type_detect()
 {
     "$IQ_SERVER_PATH"/iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
-    (type=$("$DECODERS_PATH"/dft_detect --iq - 48000 32 | awk -F':' '{print $1}'); start_decoder "$type") &>/dev/stdout |
+    (type=$(timeout 60 "$DECODERS_PATH"/dft_detect --iq - 48000 32 | awk -F':' '{print $1}');
+             if [ -z "$type" ]; then
+               echo "KILL $1"|socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr;cat - >/dev/null;
+             else start_decoder "$type";
+             fi) &>/dev/stdout |
     grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' |
     socat -u - UDP4-DATAGRAM:127.255.255.255:$DECODER_PORT,broadcast,reuseaddr
 }
@@ -187,7 +191,7 @@ declare -A slots   # active slots
          debug "timer: actfreq[$freq] is ${actfreq[$freq]}"
          actfreq[$freq]=$((actfreq[$freq]-1))
          [ "${actfreq[$freq]}" -gt "$SLOT_TIMEOUT" ] && actfreq[$freq]=$SLOT_TIMEOUT
-         if [ "${actfreq[$freq]}" -eq 0 ]; then
+         if [ "${actfreq[$freq]}" -le 0 ]; then
            # deactivate slot
            [ -z "${slots[$freq]}" ] || {
              debug "Deactivating slot $slot with freq $freq"
@@ -207,6 +211,7 @@ declare -A slots   # active slots
        debug "active slots: ${!slots[@]}"
        debug "----------------------------------------"
        ;;
+    KILL*) actfreq[${LINE#KILL }]=-100;debug "kill signal received with freq: ${LINE#KILL }" ;;
     *) freq="${LINE% *}"
        [ -z "${_FREQ_BLACK_LIST[$freq]}" ] && {
          [ -n "$freq" ] && actfreq[$freq]=$((actfreq[$freq]+1))           

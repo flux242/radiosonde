@@ -92,5 +92,4 @@ Picture below shows receiving 3 and then 4 sondes at the same time with my Celer
 so, receiving 5 sondes at the same time is the maximum.
 
 ## Possible improvements
-- add a timer to free a slot if no sonde is detected within specified time by dft_detect
 - add MIN and MAX frequencies parameters to exclude aliasing on the left side and also make it ready for multi-dongle usage scenario

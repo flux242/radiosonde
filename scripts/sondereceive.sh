@@ -2,6 +2,8 @@
 
 . ./defaults.conf
 
+DECODERS_PATH="../decoders"
+
 show_usage()
 {
 cat <<HEREDOC
@@ -61,12 +63,10 @@ log_power()
     ./csdr logaveragepower_cf -70 $SCAN_BINS $SCAN_AVERAGE_TIMES |
     ./csdr fft_exchange_sides_ff $SCAN_BINS  |
     ./csdr dump_f | tr ' ' '\n' |
-    awk -v bins=$SCAN_BINS '{printf("%.1f ",$0);if(0==(NR%bins)){printf("\n")};fflush()}' |
+    awk -v bins=$SCAN_BINS '{printf("%.1f",$0);if(0==(NR%bins)){printf("\n")}else{printf(",")};fflush()}' |
     awk -v f=$TUNER_FREQ -v bins="$SCAN_BINS" -v sr="$TUNER_SAMPLE_RATE" '
       {printf("{\"response_type\":\"log_power\",\"samplerate\":%d,\"tuner_freq\":%d,\"result\":\"%s\"}\n", sr, f, $0);
       fflush()}'
-#    awk -v bins=$SCAN_BINS '{printf("%.1f ",$0);if(0==(NR%bins)){printf("\n")};fflush()}' | \
-#    awk -v bins="$SCAN_BINS" -v sr="$TUNER_SAMPLE_RATE" '{printf("{\"response_type\":\"log_power\",\"samplerate\":%d,\"result\":\"%s\"}\n", sr, $0);fflush()}'
   ) &> /dev/stdout | grep --line-buffered -E '^{' | \
     while read LINE; do 
       (flock 200; echo "$LINE") 200>$MUTEX_LOCK_FILE
@@ -86,7 +86,7 @@ detect_sonde_type() {
   ./csdr fmdemod_quadri_cf | ./csdr limit_ff | ./csdr convert_f_s16 | \
   sox -t raw -esigned-integer -b 16 -r $DEMODULATOR_OUTPUT_FREQ - -b 8 -c 1 -t wav - highpass 10 gain +5 | \
   tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) | \
-  ./dft_detect /dev/stdin | awk -F':' '{print $1}'
+  $DECODERS_PATH/dft_detect /dev/stdin | awk -F':' '{print $1}'
 }
 
 decode_sonde()
@@ -101,11 +101,11 @@ decode_sonde()
 echo "Sonde type detected: $type" >/dev/stderr  
 
   case "$type" in
-    RS41) decoder="./rs41mod --ptu --ecc --crc --json -vv /dev/stdin > /dev/stderr";bw=$bpf3 ;;
-    RS92) decoder="./rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=$bpf3 ;;
-    DFM9) decoder="tee >(./dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | ./dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=$bpf3 ;;
-     M10) decoder="./m10mod --ptu --json > /dev/stderr";bw=$bpf9 ;;
-  C34C50) decoder="tee >(./c34dft -d1 --ptu --json /dev/stdin > /dev/stderr) | ./c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=$bpf9 ;;
+    RS41) decoder="$DECODERS_PATH/rs41mod --ptu --ecc --crc --json -vv /dev/stdin > /dev/stderr";bw=$bpf3 ;;
+    RS92) decoder="$DECODERS_PATH/rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=$bpf3 ;;
+    DFM9) decoder="tee >($DECODERS_PATH/dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | $DECODERS_PATH/dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=$bpf3 ;;
+     M10) decoder="$DECODERS_PATH/m10mod --ptu --json > /dev/stderr";bw=$bpf9 ;;
+  C34C50) decoder="tee >($DECODERS_PATH/c34dft -d1 --ptu --json /dev/stdin > /dev/stderr) | $DECODERS_PATH/c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=$bpf9 ;;
        *) ;;
   esac
 
@@ -138,12 +138,12 @@ decode_sonde_wav()
       if [ -z "$decoder" ]; then
         # start all decoders if no decoder is specified
         # TODO: define decoders as string constants and use them here and also in decode_sonde
-        tee >(./m10mod --json > /dev/stderr) |
-        tee >(./c50dft -d1 --json /dev/stdin > /dev/stderr) |
-        tee >(./dfm09mod --ecc --json -vv /dev/stdin > /dev/stderr) |
-        tee >(./dfm09mod --ecc --json -i /dev/stdin > /dev/stderr) |
-        tee >(./rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr)  |
-        ./rs41mod --ecc --crc --json -vv /dev/stdin > /dev/stderr
+        tee >($DECODERS_PATH/m10mod --json > /dev/stderr) |
+        tee >($DECODERS_PATH/c50dft -d1 --json /dev/stdin > /dev/stderr) |
+        tee >($DECODERS_PATH/dfm09mod --ecc --json -vv /dev/stdin > /dev/stderr) |
+        tee >($DECODERS_PATH/dfm09mod --ecc --json -i /dev/stdin > /dev/stderr) |
+        tee >($DECODERS_PATH/rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr)  |
+        $DECODERS_PATH/rs41mod --ecc --crc --json --ptu -vv /dev/stdin > /dev/stderr
       else
         eval "$decoder"
       fi

@@ -1,6 +1,7 @@
 
 CC = gcc
-COPTS = -O3
+#COPTS = -O3
+COPTS = -Ofast
 
 .PHONY: all
 all: iq_server iq_client iq_fm

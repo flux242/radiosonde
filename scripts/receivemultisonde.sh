@@ -55,7 +55,7 @@ DEBUG_PORT=5675
 
 SLOT_TIMEOUT=10 # i.e 30 seconds *10 = 5 minutes
 SLOT_ACTIVATE_TIME=4 # 4 * 5 seconds = 20 seconds min activity
-MAX_SLOTS=5 # this value should be MAX_FQ - 1 (MAX_FQ is defined in the iq_base.h)
+MAX_SLOTS=6 # this value should be MAX_FQ - 1 (MAX_FQ is defined in the iq_base.h)
 
 IQ_SERVER_PATH="../iq_svcl"
 DECODERS_PATH="../decoders"
@@ -136,12 +136,12 @@ start_decoder()
   local decoder bw
 
   case "$1" in
-    RS41) decoder="$DECODERS_PATH/rs41mod --ptu --ecc --crc --json /dev/stdin > /dev/stderr";bw=10 ;;
-    RS92) decoder="$DECODERS_PATH/rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=10 ;;
-    DFM9) decoder="tee >($DECODERS_PATH/dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | "$DECODERS_PATH"/dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=10 ;;
-     M10) decoder="$DECODERS_PATH/m10mod --ptu --json > /dev/stderr";bw=19.2 ;;
-  C34C50) decoder="tee >($DECODERS_PATH/c34dft -d1 --ptu --json /dev/stdin > /dev/stderr) | "$DECODERS_PATH"/c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=19.2 ;;
-     MRZ) decoder="$DECODERS_PATH/mp3h1mod --ptu --ecc --json  dev/stdin > /dev/stderr";bw=12 ;;
+    RS41) decoder="$DECODERS_PATH/rs41mod --ptu --ecc --crc --json";bw=10 ;;
+    RS92) decoder="$DECODERS_PATH/rs92mod --ptu --crc --ecc --json";bw=10 ;;
+    DFM9) decoder="$DECODERS_PATH/dfm09mod --ptu --ecc --json";[ -n "$2" -a "$2" -lt 0 ] && decoder="$decoder -i";bw=10 ;;
+     M10) decoder="$DECODERS_PATH/m10mod --ptu --json";bw=19.2 ;;
+  C34C50) decoder="$DECODERS_PATH/c50dft -d1 --ptu --json";bw=19.2 ;;
+     MRZ) decoder="$DECODERS_PATH/mp3h1mod --ptu --ecc --json";bw=12 ;;
        *) ;;
   esac
 
@@ -153,28 +153,30 @@ start_decoder()
       [ -s "$ALMANAC_FILE" ] && [ "$(($(date +%s)-$(date -r $ALMANAC_FILE +%s)))" -gt "$ALMANAC_MAX_AGE_SEC" ] && \rm $ALMANAC_FILE
       [ -s "$ALMANAC_FILE" ] || ./getsemalmanac.sh "$ALMANAC_FILE"
     }
-    [ -s "$EPHEM_FILE" ] || {
+    if [ -s "$EPHEM_FILE" ]; then
+      decoder="$decoder -e $EPHEM_FILE"
+    else
       if [ -s "$ALMANAC_FILE" ]; then
-        decoder="$DECODERS_PATH/rs92mod -a "$ALMANAC_FILE" --crc --ecc --json /dev/stdin > /dev/stderr"
+        decoder="$decoder -a $ALMANAC_FILE"
       else
-        decoder="cat /dev/stdin >/dev/null"
+        decoder="(cat /dev/stdin >/dev/null)"
       fi
-    }
+    fi
   }
 
   "$IQ_SERVER_PATH"/iq_fm --lpbw $bw - 48000 32 --bo 16 |
   sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
   tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) |
-  eval "$decoder"
+  eval "$decoder >/dev/stderr"
 }
 
 decode_sonde_with_type_detect()
 {
     "$IQ_SERVER_PATH"/iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
-    (type=$(timeout 60 "$DECODERS_PATH"/dft_detect --iq - 48000 32 | awk -F':' '{print $1}');
+    (type=$(timeout 60 "$DECODERS_PATH"/dft_detect --iq - 48000 32 | awk -F':' '{printf("%s %d", $1,100*$2)}');
              if [ -z "$type" ]; then
                echo "KILL $1"|socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr;cat - >/dev/null;
-             else start_decoder "$type";
+             else start_decoder $type;
              fi) &>/dev/stdout |
     grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' |
     socat -u - UDP4-DATAGRAM:127.255.255.255:$DECODER_PORT,broadcast,reuseaddr

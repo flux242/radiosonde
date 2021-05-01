@@ -86,7 +86,7 @@ detect_sonde_type() {
   ./csdr fmdemod_quadri_cf | ./csdr limit_ff | ./csdr convert_f_s16 | \
   sox -t raw -esigned-integer -b 16 -r $DEMODULATOR_OUTPUT_FREQ - -b 8 -c 1 -t wav - highpass 10 gain +5 | \
   tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) | \
-  $DECODERS_PATH/dft_detect /dev/stdin | awk -F':' '{print $1}'
+  $DECODERS_PATH/dft_detect /dev/stdin | awk -F':' '{printf("%s %d", $1,100*$2)}'
 }
 
 decode_sonde()
@@ -98,23 +98,33 @@ decode_sonde()
 
   local type=$(detect_sonde_type $bpf9)
 
-echo "Sonde type detected: $type" >/dev/stderr  
-
-  case "$type" in
-    RS41) decoder="$DECODERS_PATH/rs41mod --ptu --ecc --crc --json -vv /dev/stdin > /dev/stderr";bw=$bpf3 ;;
-    RS92) decoder="$DECODERS_PATH/rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr";bw=$bpf3 ;;
-    DFM9) decoder="tee >($DECODERS_PATH/dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) | $DECODERS_PATH/dfm09mod --ptu --ecc --json -i /dev/stdin > /dev/stderr";bw=$bpf3 ;;
-     M10) decoder="$DECODERS_PATH/m10mod --ptu --json > /dev/stderr";bw=$bpf9 ;;
-  C34C50) decoder="tee >($DECODERS_PATH/c34dft -d1 --ptu --json /dev/stdin > /dev/stderr) | $DECODERS_PATH/c50dft -d1 --ptu --json /dev/stdin > /dev/stderr";bw=$bpf9 ;;
+  case "${type% *}" in
+    RS41) decoder="$DECODERS_PATH/rs41mod --ptu --ecc --crc --json";bw=10 ;;
+    RS92) decoder="$DECODERS_PATH/rs92mod --ptu --crc --ecc --json";bw=10 ;;
+    DFM9) decoder="$DECODERS_PATH/dfm09mod --ptu --ecc --json";[ -n "${type#* }" -a "${type#* }" -lt 0 ] && decoder="$decoder -i";bw=10 ;;
+     M10) decoder="$DECODERS_PATH/m10mod --ptu --json";bw=19.2 ;;
+  C34C50) decoder="$DECODERS_PATH/c50dft -d1 --ptu --json";bw=19.2 ;;
+     MRZ) decoder="$DECODERS_PATH/mp3h1mod --ptu --ecc --json";bw=12 ;;
        *) ;;
   esac
 
-  [ "$type" = "RS92" ] && {
-    # consider using almanach instead which is valid for one day instead of couple of hours for ephemeridis 
+  [ "${type% *}" = "RS92" ] && {
     # check if ephemeridis file exist and not older than EPHEM_MAX_AGE_SEC
-    [ -e "$EPHEM_FILE" ] && [ "$(($(date +%s)-$(date -r $EPHEM_FILE +%s)))" -gt "$EPHEM_MAX_AGE_SEC" ] && \rm $EPHEM_FILE
-    [ -e "$EPHEM_FILE" ] || ./getephemeris.sh
-    [ -e "$EPHEM_FILE" ] || decoder="cat /dev/stdin >/dev/null"
+    [ -s "$EPHEM_FILE" ] && [ "$(($(date +%s)-$(date -r $EPHEM_FILE +%s)))" -gt "$EPHEM_MAX_AGE_SEC" ] && \rm $EPHEM_FILE
+    [ -s "$EPHEM_FILE" ] || ./getephemeris.sh
+    [ -s "$EPHEM_FILE" ] || {
+      [ -s "$ALMANAC_FILE" ] && [ "$(($(date +%s)-$(date -r $ALMANAC_FILE +%s)))" -gt "$ALMANAC_MAX_AGE_SEC" ] && \rm $ALMANAC_FILE
+      [ -s "$ALMANAC_FILE" ] || ./getsemalmanac.sh "$ALMANAC_FILE"
+    }
+    if [ -s "$EPHEM_FILE" ]; then
+      decoder="$decoder -e $EPHEM_FILE"
+    else
+      if [ -s "$ALMANAC_FILE" ]; then
+        decoder="$decoder -a $ALMANAC_FILE"
+      else
+        decoder="(cat /dev/stdin >/dev/null)"
+      fi
+    fi
   }
 
   ( \
@@ -138,14 +148,14 @@ decode_sonde_wav()
       if [ -z "$decoder" ]; then
         # start all decoders if no decoder is specified
         # TODO: define decoders as string constants and use them here and also in decode_sonde
-        tee >($DECODERS_PATH/m10mod --json > /dev/stderr) |
-        tee >($DECODERS_PATH/c50dft -d1 --json /dev/stdin > /dev/stderr) |
-        tee >($DECODERS_PATH/dfm09mod --ecc --json -vv /dev/stdin > /dev/stderr) |
-        tee >($DECODERS_PATH/dfm09mod --ecc --json -i /dev/stdin > /dev/stderr) |
-        tee >($DECODERS_PATH/rs92mod -e "$EPHEM_FILE" --crc --ecc --json /dev/stdin > /dev/stderr)  |
-        $DECODERS_PATH/rs41mod --ecc --crc --json --ptu -vv /dev/stdin > /dev/stderr
+        tee >($DECODERS_PATH/m10mod --ptu --json > /dev/stderr) |
+        tee >($DECODERS_PATH/c50dft -d1 --ptu --json > /dev/stderr) |
+        tee >($DECODERS_PATH/dfm09mod --ptu --ecc --json /dev/stdin > /dev/stderr) |
+        tee >($DECODERS_PATH/dfm09mod --ptu --ecc --json -i > /dev/stderr) |
+        tee >($DECODERS_PATH/rs92mod --ptu --crc --ecc --json > /dev/stderr)  |
+        $DECODERS_PATH/rs41mod --ptu --ecc --crc --json > /dev/stderr
       else
-        eval "$decoder"
+        eval "$decoder > /dev/stderr"
       fi
     ) | \
     aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null

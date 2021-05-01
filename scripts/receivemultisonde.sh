@@ -36,7 +36,7 @@ show_error_exit()
 
 debug()
 {
-  [ -n "$1" ] && {
+  [[ -n "$1" ]] && {
     echo "$@" | socat -u - UDP4-DATAGRAM:127.255.255.255:$DEBUG_PORT,broadcast,reuseaddr
   }
 }
@@ -77,11 +77,11 @@ while getopts "ha:p:f:s:g:p:P:t:" opt; do
 done
 shift "$((OPTIND-1))"
  
-[ -n "$TUNER_FREQ" ] && [ ! "$TUNER_FREQ" -eq 0 ] || show_error_exit "Wrong frequency"
-[ ! "$TUNER_SAMPLE_RATE" -eq 0 ] || show_error_exit "Wrong sample rate"
+[[ -n "$TUNER_FREQ" && ! "$TUNER_FREQ" -eq 0 ]] || show_error_exit "Wrong frequency"
+[[ ! "$TUNER_SAMPLE_RATE" -eq 0 ]] || show_error_exit "Wrong sample rate"
 
 DECIMATE=$((TUNER_SAMPLE_RATE/DEMODULATOR_OUTPUT_FREQ))
-[ "$((DECIMATE*DEMODULATOR_OUTPUT_FREQ))" -ne "$TUNER_SAMPLE_RATE" ] && show_error_exit "Sample rate should be multiple of $DEMODULATOR_OUTPUT_FREQ"
+[[ "$((DECIMATE*DEMODULATOR_OUTPUT_FREQ))" -ne "$TUNER_SAMPLE_RATE" ]] && show_error_exit "Sample rate should be multiple of $DEMODULATOR_OUTPUT_FREQ"
 
 
 cleanup()
@@ -147,16 +147,16 @@ start_decoder()
 
   [ "$1" = "RS92" ] && {
     # check if ephemeridis file exist and not older than EPHEM_MAX_AGE_SEC
-    [ -s "$EPHEM_FILE" ] && [ "$(($(date +%s)-$(date -r $EPHEM_FILE +%s)))" -gt "$EPHEM_MAX_AGE_SEC" ] && \rm $EPHEM_FILE
-    [ -s "$EPHEM_FILE" ] || ./getephemeris.sh
-    [ -s "$EPHEM_FILE" ] || {
-      [ -s "$ALMANAC_FILE" ] && [ "$(($(date +%s)-$(date -r $ALMANAC_FILE +%s)))" -gt "$ALMANAC_MAX_AGE_SEC" ] && \rm $ALMANAC_FILE
-      [ -s "$ALMANAC_FILE" ] || ./getsemalmanac.sh "$ALMANAC_FILE"
+    [[ -s "$EPHEM_FILE" && "$(($(date +%s)-$(date -r $EPHEM_FILE +%s)))" -gt "$EPHEM_MAX_AGE_SEC" ]] && \rm $EPHEM_FILE
+    [[ -s "$EPHEM_FILE" ]] || ./getephemeris.sh
+    [[ -s "$EPHEM_FILE" ]] || {
+      [[ -s "$ALMANAC_FILE" && "$(($(date +%s)-$(date -r $ALMANAC_FILE +%s)))" -gt "$ALMANAC_MAX_AGE_SEC" ]] && \rm $ALMANAC_FILE
+      [[ -s "$ALMANAC_FILE" ]] || ./getsemalmanac.sh "$ALMANAC_FILE"
     }
-    if [ -s "$EPHEM_FILE" ]; then
+    if [[ -s "$EPHEM_FILE" ]]; then
       decoder="$decoder -e $EPHEM_FILE"
     else
-      if [ -s "$ALMANAC_FILE" ]; then
+      if [[ -s "$ALMANAC_FILE" ]]; then
         decoder="$decoder -a $ALMANAC_FILE"
       else
         decoder="(cat /dev/stdin >/dev/null)"
@@ -174,7 +174,7 @@ decode_sonde_with_type_detect()
 {
     "$IQ_SERVER_PATH"/iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
     (type=$(timeout 60 "$DECODERS_PATH"/dft_detect --iq - 48000 32 | awk -F':' '{printf("%s %d", $1,100*$2)}');
-             if [ -z "$type" ]; then
+             if [[ -z "$type" ]]; then
                echo "KILL $1"|socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr;cat - >/dev/null;
              else start_decoder $type;
              fi) &>/dev/stdout |
@@ -192,18 +192,18 @@ declare -A slots   # active slots
        for freq in "${!actfreq[@]}"; do 
          debug "timer: actfreq[$freq] is ${actfreq[$freq]}"
          actfreq[$freq]=$((actfreq[$freq]-1))
-         [ "${actfreq[$freq]}" -gt "$SLOT_TIMEOUT" ] && actfreq[$freq]=$SLOT_TIMEOUT
-         if [ "${actfreq[$freq]}" -le 0 ]; then
+         [[ "${actfreq[$freq]}" -gt "$SLOT_TIMEOUT" ]] && actfreq[$freq]=$SLOT_TIMEOUT
+         if [[ "${actfreq[$freq]}" -le 0 ]]; then
            # deactivate slot
-           [ -z "${slots[$freq]}" ] || {
+           [[ -z "${slots[$freq]}" ]] || {
              debug "Deactivating slot $slot with freq $freq"
              cleanup "${slots[$freq]}"
              unset slots[$freq]
            }
            unset actfreq[$freq]
-         elif [ "${actfreq[$freq]}" -ge $SLOT_ACTIVATE_TIME ]; then
+         elif [[ "${actfreq[$freq]}" -ge $SLOT_ACTIVATE_TIME ]]; then
            # activate slot
-           [ -z "${slots[$freq]}" ] && [ "${#slots[@]}" -lt $MAX_SLOTS ] && {
+           [[ -z "${slots[$freq]}" && "${#slots[@]}" -lt $MAX_SLOTS ]] && {
              debug "Activating slot $slot with freq $freq"
              decode_sonde_with_type_detect "$freq" &
              slots[$freq]=$!
@@ -215,9 +215,7 @@ declare -A slots   # active slots
        ;;
     KILL*) actfreq[${LINE#KILL }]=-100;debug "kill signal received with freq: ${LINE#KILL }" ;;
     *) freq="${LINE% *}"
-       [ -z "${_FREQ_BLACK_LIST[$freq]}" ] && {
-         [ -n "$freq" ] && actfreq[$freq]=$((actfreq[$freq]+1))           
-       }
+       [[ -z "${_FREQ_BLACK_LIST[$freq]}" && -n "$freq" ]] && actfreq[$freq]=$((actfreq[$freq]+1))
        ;;
   esac
 done) &

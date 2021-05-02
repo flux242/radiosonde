@@ -142,7 +142,7 @@ start_decoder()
      M10) decoder="$DECODERS_PATH/m10mod --ptu --json";bw=19.2 ;;
   C34C50) decoder="$DECODERS_PATH/c50dft -d1 --ptu --json";bw=19.2 ;;
      MRZ) decoder="$DECODERS_PATH/mp3h1mod --ptu --ecc --json";bw=12 ;;
-       *) ;;
+       *) decoder="(cat /dev/stdin >/dev/null)"; debug "ERROR: Unsupported sonde type: $1" ;;
   esac
 
   [ "$1" = "RS92" ] && {

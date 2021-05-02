@@ -1,6 +1,14 @@
 #!/usr/bin/env perl
 #
 
+# I use this script to inject wireless temperature sensors readings into my fake
+# APRS server (aprsfakeserver.pl)
+# Wireless sensor reading are broadcasted on my local network in a JSON form like:
+# {"time" : "2021-05-02 07:16:24", "model" : "inFactory sensor", "id" : 118, "temperature_C" : 5.778, "humidity" : 81}
+# {"time" : "2021-05-02 07:16:33", "model" : "pressure sensor", "id" : 242, "pressure" : "1013.95"}
+#
+# Usage: weather2aprs.pl CALLSIGN QTH_LAT QTH_LON | tee /dev/stderr | socat -u - UDP4-DATAGRAM:0.0.0.0:30448,broadcast,reuseaddr
+
 use strict;
 use warnings;
 

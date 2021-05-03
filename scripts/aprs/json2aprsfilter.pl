@@ -55,6 +55,11 @@ sub filter_sonde_by_id {
 
   # filter DFM wrong ids out
    not $id =~ /Dxxxxxxxx/ or return 0;
+   not $id =~ /DFM-xxxxxxxx/ or return 0;
+
+   # filter C50 wrong ids out
+   not $id =~ /C50-xxxx/ or return 0;
+
 #  re.match(r'DFM-\d{6}', _serial)
 
   return 1;

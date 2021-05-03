@@ -2,11 +2,11 @@
 
 I was never happy about existing radiosonde hunting related projects like radiosonde_auto_rx or dxlAPRS because of unneeded complexity or feature sets.
 - auto_rx project is written in Python and therefore slow, resources hungry, has dependencies I don't want and can only handle one sonde at time. Although I [patched](https://github.com/projecthorus/radiosonde_auto_rx/issues/72) it and used some time ago to display sondes in my browser but it was taxing CPU on the server badly, so I ditched it.
-- dxlAPRS was designed for APRS related things and then enhanced to do some radiosonde related stuff. This project has a slicer and can track multiple sondes. Still it contains too many (or even mainly) things I don't need. Can't say anything about its complexity and dependencies because I never even tried to compile it.
+- dxlAPRS was designed for APRS related things and then enhanced to do some radiosonde related stuff. This project has a channelizer and can track multiple sondes. Still it contains too many (or even mainly) things I don't need. Can't say anything about its complexity and dependencies because I never even tried to compile it.
 
 As far as the sondes decoder were already written by Zilog80 I only needed a script that would scan over the baseband for sondes to demodulate and decode their signals.
 
-First, I've written a simple script that would multiplex the IQ samples received from the *rtl-sdr*] dongle and then would shift and filter baseband signal using [csdr](https://github.com/ha7ilm/csdr) framework. It worked to some extent but wasn't very flexible. And then Zilog80 told me about his new slicer - *iq_server*. After some iterations and improvements the *receivemultisonde.sh* script was ready.
+First, I've written a [simple script](http://flux242.blogspot.com/2020/08/how-to-receive-and-decode-multiple.html) that would multiplex the IQ samples received from the *rtl-sdr* dongle and then would shift and filter baseband signal using [csdr](https://github.com/ha7ilm/csdr) framework. It worked to some extent but wasn't very flexible. And then Zilog80 told me about his new channelizer - *iq_server*. After [some iterations](http://flux242.blogspot.com/2020/08/how-to-receive-and-decode-multiple_10.html) and improvements the *receivemultisonde.sh* script was ready.
 
 ## receivemultisonde.sh
 This script is used to receive multiple sondes at a time by scanning baseband signal.

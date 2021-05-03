@@ -800,10 +800,10 @@ static void print_gpx(gpx_t *gpx) {
             ui8_t dfm_typ = (gpx->sonde_typ & 0xF);
             switch ( dfm_typ ) {
                 case   0: sprintf(json_sonde_id, "Dxxxxxxxx"); break; //json_sonde_id[0] = '\0';
-                case   6: sprintf(json_sonde_id, "D%6X", gpx->SN6); sprintf(json_sonde_subtype, "DFM-06"); break; // DFM-06
-                case 0xA: sprintf(json_sonde_id, "D%6u", gpx->SN);  sprintf(json_sonde_subtype, "DFM-09"); break;  // DFM-09
+                case   6: sprintf(json_sonde_id, "D%6X", gpx->SN6); sprintf(json_sonde_subtype, "DFM06"); break; // DFM-06
+                case 0xA: sprintf(json_sonde_id, "D%6u", gpx->SN);  sprintf(json_sonde_subtype, "DFM09"); break;  // DFM-09
                 // 0x7:PS-15?, 0xB:DFM-17? 0xC:DFM-09P? 0xD:DFM-17P?
-                default : sprintf(json_sonde_id, "D%6u", gpx->SN);  sprintf(json_sonde_subtype, "DFM-%2X", dfm_typ);
+                default : sprintf(json_sonde_id, "D%6u", gpx->SN);  sprintf(json_sonde_subtype, "DFM%2X", dfm_typ);
             }
 
             // JSON frame counter: seconds since GPS (ignoring leap seconds, DFM=UTC)

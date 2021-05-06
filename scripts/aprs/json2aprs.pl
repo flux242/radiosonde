@@ -259,6 +259,7 @@ while ($line = <$fpi>) {
         or do {
           my $error = $@ || 'Unknown error by date parsing';
           print STDERR $error;
+          print STDERR "DataTime string: $datetime";
           next; # can't continue as the time object wasn't created
         };
 
@@ -276,8 +277,12 @@ while ($line = <$fpi>) {
 
         my $date = $time->mday*10000+$time->mon*100+($time->year%100);
 
-        my $speed = $json->{"vel_h"}*3.6/1.852;  ## m/s -> knots
+        my $speed = $json->{"vel_h"};  ## m/s -> knots
+        defined $speed or $speed = 0.0;
+        $speed = $speed*3.6/1.852;  ## m/s -> knots
+
         my $course = $json->{"heading"};
+        defined $course or $course = 0;
 
         my $callsign = $json->{"id"};
         $callsign =~ s/DFM-/D/g; # Object names with '-' aren't allowed with APRS
@@ -289,6 +294,7 @@ while ($line = <$fpi>) {
         my $framestr = defined $frame ? sprintf(" FN=%d", $frame) : "";
 
         my $climb = $json->{"vel_v"};
+        defined $climb or $climb = 0.0;
 
         my $freq = $json->{"freq"};
         my $freqstr = defined $freq ? sprintf(" %.2fMHz", $freq/1e6) : "";

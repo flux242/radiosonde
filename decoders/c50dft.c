@@ -6,9 +6,21 @@
 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <complex.h>
 #include <math.h>
+
+// optional JSON "version"
+//  (a) set global
+//      gcc -DVERSION_JSN [-I<inc_dir>] ...
+#ifdef VERSION_JSN
+  #include "version_jsn.h"
+#endif
+// or
+//  (b) set local compiler option, e.g.
+//      gcc -DVER_JSN_STR=\"0.0.2\" ...
+
 
 typedef  unsigned char  ui8_t;
 
@@ -28,6 +40,7 @@ typedef struct {
     float lat; float lon; float alt;
     unsigned chk;
     float T; float RH;
+    int jsn_freq;   // freq/kHz (SDR)
 } gpx_t;
 
 static gpx_t gpx;
@@ -323,11 +336,12 @@ static void printGPX() {
 
 static void printJSON() {
     // UTC or GPS time ?
-    char json_sonde_id[] = "C50-xxxx\0\0\0\0\0\0\0";
+    char *ver_jsn = NULL;
+    char json_sonde_id[] = "SC50xxxx\0\0\0\0\0\0\0";
     if (gpx.sn) {
-        sprintf(json_sonde_id, "C50-%u", gpx.sn);
+        sprintf(json_sonde_id, "SC50%04X", gpx.sn);
     }
-    printf("{ \"type\": \"%s\"", "C50");
+    printf("{ \"type\": \"%s\"", "SRSC50");
     printf(", \"id\": \"%s\", ", json_sonde_id);
     printf("\"datetime\": \"%04d-%02d-%02dT%02d:%02d:%02dZ\", \"lat\": %.5f, \"lon\": %.5f, \"alt\": %.1f",
            gpx.jahr, gpx.monat, gpx.tag, gpx.std, gpx.min, gpx.sek, gpx.lat, gpx.lon, gpx.alt);
@@ -335,6 +349,13 @@ static void printJSON() {
         if (gpx.T > -273.0) printf(", \"temp\": %.1f", gpx.T);
         if (gpx.RH > -0.5) printf(", \"humidity\": %.1f", gpx.RH);
     }
+    if (gpx.jsn_freq > 0) {
+        printf(", \"freq\": %d", gpx.jsn_freq);
+    }
+    #ifdef VER_JSN_STR
+        ver_jsn = VER_JSN_STR;
+    #endif
+    if (ver_jsn && *ver_jsn != '\0') printf(", \"version\": \"%s\"", ver_jsn);
     printf(" }\n");
     //printf("\n");
 }
@@ -504,6 +525,7 @@ int main(int argc, char *argv[]) {
     int len;
     float k_f0, k_f1, k_df;
     float cb0, cb1;
+    int cfreq = -1;
 
     fpname = argv[0];
     ++argv;
@@ -535,6 +557,13 @@ int main(int argc, char *argv[]) {
             option_verbose = 1;
             option_json = 1;
         }
+        else if ( (strcmp(*argv, "--jsn_cfq") == 0) ) {
+            int frq = -1;  // center frequency / Hz
+            ++argv;
+            if (*argv) frq = atoi(*argv); else return -1;
+            if (frq < 300000000) frq = -1;
+            cfreq = frq;
+        }
         else {
             fp = fopen(*argv, "rb");
             if (fp == NULL) {
@@ -547,6 +576,9 @@ int main(int argc, char *argv[]) {
     }
     if (!wavloaded) fp = stdin;
 
+
+    gpx.jsn_freq = 0;
+    if (cfreq > 0) gpx.jsn_freq = (cfreq+500)/1000;
 
     i = read_wav_header(fp);
     if (i) {

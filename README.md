@@ -13,7 +13,7 @@ This script is used to receive multiple sondes at a time by scanning baseband si
 
 Main advantages over aforementioned frameworks:
 - Simplicity. It's only about 170 lines of code!
-- No heavy dependencies: it only depends on the *rlt-sdr* package, *iq_server* (in this repo), *decoders*(in this repo), *gawk*, *bash*, *socat*, *jq*
+- No heavy dependencies: it only depends on the *rlt-sdr* package, *iq_server* (in this repo), *decoders*(in this repo), *gawk*, *bash*, *socat*, *jq*, *sox*, *aplay*
 - Easy to enhance. For example to add Russian MRZ sondes I just added a single line of code!
 - Modular.
 

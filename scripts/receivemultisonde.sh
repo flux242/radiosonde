@@ -36,8 +36,13 @@ show_error_exit()
 
 debug()
 {
+  local now_date
+  [[ "-d" = "$1" ]] && {
+    shift
+    now_date=$(date +%Y%m%d-%H%M%S\ )
+  }
   [[ -n "$1" ]] && {
-    echo "$@" | socat -u - UDP4-DATAGRAM:127.255.255.255:$DEBUG_PORT,broadcast,reuseaddr
+    echo "${now_date}$@" | socat -u - UDP4-DATAGRAM:127.255.255.255:$DEBUG_PORT,broadcast,reuseaddr
   }
 }
 
@@ -131,6 +136,50 @@ scan_power_iq()
 #     }'
 }
 
+# Alternative signal scanning method. It finds peaks in the power scan log.
+# Basically it removes DC component from the power coefficients and then
+# checks for coefficients that are SCAN_POWER_THRESHOLD above zero.
+# A peak should also be at least SCAN_SIGNAL_MIN_WIDTH wide which corresponds to
+# SCAN_SIGNAL_MIN_WIDTH * TUNER_SAMPLE_RATE/SCAN_BINS Hz. Minimal width for RS41
+# I've seen was 10, so I set it to 8 by default.
+scan_power_peaks()
+{
+    local SCAN_DC_REMOVAL_AVERAGING=100 # average over so many spectrum coefficients
+    local SCAN_SIGNAL_MIN_WIDTH=8 # a signal should be at least this wide (8*samplerate/bins Hz)
+    local SCAN_OUTPUT_STEP=2000   # minimum scan distance between signals. I'd say 2000 Hz should be the minimum
+
+    "$IQ_SERVER_PATH"/iq_client --fftc /dev/stdout | \
+    tee >(
+     awk -v f=$TUNER_FREQ -v bins="$SCAN_BINS" -v sr="$TUNER_SAMPLE_RATE" '
+       {printf("{\"response_type\":\"log_power\",\"samplerate\":%d,\"tuner_freq\":%d,\"result\":\"%s\"}\n", sr, f, $0);
+       fflush()}' |
+     socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_OUT_PORT,broadcast,reuseaddr
+    ) |
+    awk -F',' -v tf=$TUNER_FREQ -v sr=$TUNER_SAMPLE_RATE -v sb=$SCAN_BINS -v thr=$SCAN_POWER_THRESHOLD \
+            -v msw=$SCAN_SIGNAL_MIN_WIDTH -v al=$SCAN_DC_REMOVAL_AVERAGING -v ost=$SCAN_OUTPUT_STEP '
+    BEGIN{count=0;}
+    {
+      sum=$1;
+      for(i=2;i<=NF;++i) {
+        sum = sum + ($i-sum)/al;
+        if(($i-sum)>thr) {
+          if(count==0){idx=i-1;}
+          ++count;
+        }
+        else {
+          if(count>=msw) {
+            idx=idx+count/2;
+            peak_freq=(tf-sr/2)+int(sr/sb*idx);
+            peak_freq=ost*int((peak_freq+500)/ost);
+            printf("%d %.2f\n", peak_freq, $idx);
+            fflush();
+          }
+          count=0;
+        }
+      }
+    }'
+}
+
 start_decoder()
 {
   local decoder bw
@@ -174,8 +223,9 @@ decode_sonde_with_type_detect()
 {
     "$IQ_SERVER_PATH"/iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
     (type=$(timeout 60 "$DECODERS_PATH"/dft_detect --iq - 48000 32 | awk -F':' '{printf("%s %d", $1,100*$2)}');
+             debug "Type detected: $type on frequency $1"
              if [[ -z "$type" ]]; then
-               echo "KILL $1"|socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr;cat - >/dev/null;
+               (flock 200; echo "KILL $1") 200>$MUTEX_LOCK_FILE | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr;cat - >/dev/null;
              else start_decoder $type;
              fi) &>/dev/stdout |
     grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' |
@@ -189,6 +239,7 @@ declare -A slots   # active slots
 (socat -u UDP-RECVFROM:$SCANNER_COM_PORT,fork,reuseaddr - | while read LINE; do
   case "$LINE" in
     TIMER30)
+       debug -d "----------------------------------------"
        for freq in "${!actfreq[@]}"; do 
          debug "timer: actfreq[$freq] is ${actfreq[$freq]}"
          actfreq[$freq]=$((actfreq[$freq]-1))
@@ -211,7 +262,6 @@ declare -A slots   # active slots
          fi
        done
        debug "active slots: ${!slots[@]}"
-       debug "----------------------------------------"
        ;;
     KILL*) actfreq[${LINE#KILL }]=-100;debug "kill signal received with freq: ${LINE#KILL }" ;;
     *) freq="${LINE% *}"
@@ -221,10 +271,10 @@ declare -A slots   # active slots
 done) &
 pid1=$!
 
-(while sleep 30; do echo "TIMER30" | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr; done) &
+(while sleep 30; do (flock 200;echo "TIMER30") 200>$MUTEX_LOCK_FILE | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr; done) &
 pid2=$!
 
-(sleep 5;scan_power_iq | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) &
+(sleep 5;scan_power_peaks | while read LINE;do (flock 200;echo "$LINE") 200>$MUTEX_LOCK_FILE;done | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr) &
 pid3=$!
 
 trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM

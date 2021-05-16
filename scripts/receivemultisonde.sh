@@ -276,7 +276,7 @@ declare -A slots   # active slots
          if [[ "${actfreq[$freq]}" -le 0 ]]; then
            # deactivate slot
            [[ -z "${slots[$freq]}" ]] || {
-             debug "Deactivating slot $slot with freq $freq"
+             debug "Deactivating slot for freq $freq"
              cleanup "${slots[$freq]}"
              unset slots[$freq]
            }
@@ -284,7 +284,7 @@ declare -A slots   # active slots
          elif [[ "${actfreq[$freq]}" -ge $SLOT_ACTIVATE_TIME ]]; then
            # activate slot
            [[ -z "${slots[$freq]}" && "${#slots[@]}" -lt $MAX_SLOTS ]] && {
-             debug "Activating slot $slot with freq $freq"
+             debug "Activating new slot for freq $freq"
              decode_sonde_with_type_detect "$freq" &
              slots[$freq]=$!
            }

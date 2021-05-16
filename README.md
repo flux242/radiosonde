@@ -21,15 +21,15 @@ Main advantages over aforementioned frameworks:
 - First the decoders and *iq_server* needs to be compiled. Change to decoders and call 'make'. Do the same in the *iq_svcl* directory.
 - Change to the scripts directory in the terminal and start the script:
 ```
-./receivemultisonde.sh -f 403405000 -s 2400000 -P 35 -g 40 -t 5
+./receivemultisonde.sh -f 403405000 -s 2400000 -P 35 -g 40 -t 4
 ```
-In this example I tune to the 403405000 Hz frequency to receive sondes between 40230000 and 404500000 Hz. In my region almost all sondes are transmitting within this range. To receive over wider range I'd need either a hardware that has wider baseband (6MHz would cover up the whole range allocated for weather radiosondes) or I'd need multiple *rtl-sdr* dongles. In the latter case 2 or 3 dongles would be needed to cover up 6MHz. For each dongle a separate instance of *receivemultisonde.sh* needs to be started with different tune frequencies. As far as this solution would require additional hardware like splitters and signal amplifiers (or multiple antennas), I never tried it. Additionally several computers would be needed because receiving 6 sondes at the same time is the maximum I can achieve on my server equipped with Intel Celeron n5000. Then the script itself needs to be enhanced a bit - there should be a MIN and MAX frequencies defined so that multiple dongles do not overlap.
+In this example I tune to the 403405000 Hz frequency to receive sondes between 40230000 and 404500000 Hz. In my region almost all sondes are transmitting within this range. To receive over wider range I'd need either a hardware that has wider baseband (6MHz would cover up the whole range allocated for weather radiosondes) or I'd need multiple *rtl-sdr* dongles. In the latter case 2 or 3 dongles would be needed to cover up 6MHz. For each dongle a separate instance of *receivemultisonde.sh* needs to be started with different tune frequencies. As far as this solution would require additional hardware like splitters and signal amplifiers (or multiple antennas), I never tried it. Additionally several computers would be needed because receiving 6 sondes at the same time is the maximum I can achieve on my server equipped with Intel Celeron n5000. Then the script itself needs to be enhanced a bit - there should be a MIN and MAX frequencies defined so that multiple dongles frequency ranges do not overlap.
 
 ~~After starting the script it will automatically scan the frequency range on the 10kHz borders. So, if the sampling rate is set as in the example above to 2400000, then it will scan 240 different frequencies. That’s why I tune somewhere in the middle of a 10kHz. This solution is much easier to implement as to go over all peaks in the spectrum.~~
 
 After starting the script it will automatically scan the frequency range with 2 kHz steps (adjustable) to find signal peaks. Minimum 2 kHz is used to avoid ±1kHz jumps around the detected peak. 
 
-If a peak is detected the *iq_server* will allocate a slot for it until that signal vanishes. The script automatically adjusts to the signal noise floor, so the slot is allocated when the peak is bigger than current noise floor level + the threshold defined by the script's '-t' parameter (its 5dB in the example above). There's maximum number of slots defined which should correlate to the one defined for the *iq_server*. Currently it is 6 because I cannot receive more than 6 sondes at the same time anyway.
+If a peak is detected the *iq_server* will allocate a slot for it until that signal vanishes. The script automatically adjusts to the signal noise floor, so the slot is allocated when the peak is bigger than current noise floor level + the threshold defined by the script's '-t' parameter (its 4dB in the example above. Lower value would increadse sensivity which would lead to earlier sonde detection but it also would increase sensivity to the noise). 4-5dB is an adequate value. There's maximum number of slots defined which should correlate to the one defined for the *iq_server*. Currently it is 6 because I cannot receive more than 6 sondes at the same time anyway.
 
 If detected signal isn't recognized as a sonde within 60 seconds then its slot will be deallocated. This can be useful if all slots are allocated but one of signals isn't a sonde. And at the same time there is another sonde signal which is actively sending but can't be received because there's no free slots for it.
 
@@ -69,7 +69,7 @@ I log sondes using *logsonde.sh* script
 ```
 cd ~/projects/radiosonde/scripts/; nc -luk 5678 |./aprs/json2aprsfilter.pl 55.66 11.12 | ./logsonde.sh
 ```
-where 55.66 and 11.12 are my QTH lat and lon (those are fake coords in this example)
+where 55.66 and 11.12 are my QTH lat and lon (those are fake coordinates in this example)
 
 ### Submit decoded sondes to an APRS server
 As an example I'll commit to the radiosondy.info
@@ -92,7 +92,33 @@ Picture below shows receiving 3 and then 4 sondes at the same time with my Celer
 
 so, receiving 5-6 sondes at the same time is the maximum.
 
+## Debugging
+Some debug information is broadcasted on the local UDP port DEBUG_PORT (currently 5675)
+```
+20210516-100345 ----------------------------------------
+timer: actfreq[402692000] is 7
+timer: actfreq[402694000] is -100
+Deactivating slot  with freq 402694000
+Type detected:  on frequency 402692000
+active slots: 402692000
+kill signal received with freq: 402692000
+20210516-100415 ----------------------------------------
+timer: actfreq[402692000] is -100
+Deactivating slot  with freq 402692000
+active slots:
+...
+```
+If a slot gets constantly allocated/deallocated because of some parasitic signal on a specific frequency then that frequency can be disabled in the *defaults.conf* by adjusting FREQ_BLACK_LIST list.
+
+
 ## Possible improvements
 - add MIN and MAX frequencies parameters to exclude aliasing on the left side and also make it ready for multi-dongle usage scenario
-- configurable address to broadcast sondes json output. Currently it is broadcasted locally on the UDP port 5676. 
-- usage scenario when two script instances are started on the same computer. Currently it won't work because the they would use the same UDP ports for interprocess communication
+- configurable address to broadcast sondes JSON output. Currently it is broadcasted locally on the UDP port 5676. 
+- usage scenario when two script instances are started on the same computer. Currently it won't work because they would use the same UDP ports for interprocess communication
+
+## Can you help with testing?
+Actually it would be interesting to know how well does this script perform with different hardware on different locations with different noise sources. Additionally peak detection algorythm needs to be tested for different sonde types. Currently I only tested the script for sondes that use GFSK modulation (like RS41). Sondes like SRC50 that use AFSK aren't tested yet and its 'M' like spectrum could lead to detection of two peaks. I'd need to check your debug output. Just redirect it to a file and send it to me with the description of the problem
+```
+nc -luk 5675 | tee some_file_name.log
+```
+Tell me if you can test the script in multi-dongle environment and can help with adjusting it.

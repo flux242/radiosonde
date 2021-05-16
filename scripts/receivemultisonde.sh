@@ -3,49 +3,6 @@
 # Written by Alexnader K
 #
 
-show_usage()
-{
-cat <<HEREDOC
-This script receives and decodes several sondes with only one rtl dongle
-
-Usage: $(basename $0) -f 403405000 -s 2400000 -P 35 -g 40 -t 5
-       - I set the tuning frequenty in the middle of 10 kHz because I
-         know that sondes transmit with at least 10 kHz steps. 
-       - Sample rate is the maximum 2400000 Hz to improve SNR
-       - My rtl receiver has 35 PPM
-       - I set gain to 40 but I guess that with recent addition of the automatic
-         noise floor detection the gain could be set to 0 - automatic gain
-       - Signal threshold is set to 5 - a signal is considered active if its power
-         is 5dB above the noise signal
-
-Script output:
-- local UDP port 5676 the power measuremnts in json form each 5 seconds:
-  {"response_type":"log_power","samplerate":2400000,"tuner_freq":403405000,"result":"-77.9 ..."} 
-  where "result" has SCAN_BINS values.
-- local UDP port 5678 decoders output in json form:
-  {"type":"RS41","frame":5174,"id":"S3440233", ...}
-HEREDOC
-}
-
-show_error_exit()
-{
-  echo "$1" >&2
-  echo "For help: $(basename $0) -h"
-  exit 2
-}
-
-debug()
-{
-  local now_date
-  [[ "-d" = "$1" ]] && {
-    shift
-    now_date=$(date +%Y%m%d-%H%M%S\ )
-  }
-  [[ -n "$1" ]] && {
-    echo "${now_date}$@" | socat -u - UDP4-DATAGRAM:127.255.255.255:$DEBUG_PORT,broadcast,reuseaddr
-  }
-}
-
 . ./defaults.conf
 
 SCAN_BINS=4096
@@ -64,6 +21,78 @@ MAX_SLOTS=6 # this value should be MAX_FQ - 1 (MAX_FQ is defined in the iq_base.
 
 IQ_SERVER_PATH="../iq_svcl"
 DECODERS_PATH="../decoders"
+PATH="$PATH:$IQ_SERVER_PATH:$DECODERS_PATH"
+
+SCRIPT_DEPENDENCIES=(rtl_sdr aplay sox jq gawk bash socat iq_server iq_client)
+SUPPORTED_DECODERS=(rs41mod rs92mod dfm09mod m10mod c50dft mp3h1mod)
+SCRIPT_DEPENDENCIES+=(${SUPPORTED_DECODERS[@]})
+
+show_error_exit()
+{
+  echo "$1" >&2
+  echo "For help: $(basename $0) -h"
+  exit 2
+}
+
+show_dependencies()
+{
+  local dep
+  for dep in ${SCRIPT_DEPENDENCIES[@]}; do
+    printf "%s " $dep
+  done
+  printf "\n"
+}
+
+check_dependencies()
+{
+  local dep
+  for dep in ${SCRIPT_DEPENDENCIES[@]}; do
+    [[ -z "$(which $dep)" ]] && {
+      show_error_exit "Unmet dependency: missing $dep program"
+    }
+  done
+
+  # decoders aren't checked. Make sure to compile them first
+}
+
+show_usage()
+{
+cat <<HEREDOC
+This script receives and decodes several sondes with only one rtl dongle
+
+Usage: $(basename $0) -f 403405000 -s 2400000 -P 35 -g 40 -t 4
+       - I set the tuning frequenty in the middle of $SCAN_OUTPUT_STEP
+       - Sample rate is the maximum 2400000 Hz to improve SNR
+       - My rtl receiver has 35 PPM
+       - I set gain to 40 but I guess the gain could be set to 0 - automatic gain
+       - Signal threshold is set to 4 - a signal is considered active if its power
+         is 4dB above the noise signal
+
+Script output:
+- local UDP port 5676 the power measuremnts in json form each 5 seconds:
+  {"response_type":"log_power","samplerate":2400000,"tuner_freq":403405000,"result":"-77.9 ..."} 
+  where "result" has SCAN_BINS values.
+- local UDP port 5678 decoders output in json form:
+  {"type":"RS41","frame":5174,"id":"S3440233", ...}
+
+Following programs are required to start the script:
+$(show_dependencies)
+HEREDOC
+}
+
+debug()
+{
+  local now_date
+  [[ "-d" = "$1" ]] && {
+    shift
+    now_date=$(date +%Y%m%d-%H%M%S\ )
+  }
+  [[ -n "$1" ]] && {
+    echo "${now_date}$@" | socat -u - UDP4-DATAGRAM:127.255.255.255:$DEBUG_PORT,broadcast,reuseaddr
+  }
+}
+
+check_dependencies
 
 OPTIND=1 #reset index
 while getopts "ha:p:f:s:g:p:P:t:" opt; do

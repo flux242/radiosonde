@@ -25,9 +25,11 @@ Main advantages over aforementioned frameworks:
 ```
 In this example I tune to the 403405000 Hz frequency to receive sondes between 40230000 and 404500000 Hz. In my region almost all sondes are transmitting within this range. To receive over wider range I'd need either a hardware that has wider baseband (6MHz would cover up the whole range allocated for weather radiosondes) or I'd need multiple *rtl-sdr* dongles. In the latter case 2 or 3 dongles would be needed to cover up 6MHz. For each dongle a separate instance of *receivemultisonde.sh* needs to be started with different tune frequencies. As far as this solution would require additional hardware like splitters and signal amplifiers (or multiple antennas), I never tried it. Additionally several computers would be needed because receiving 6 sondes at the same time is the maximum I can achieve on my server equipped with Intel Celeron n5000. Then the script itself needs to be enhanced a bit - there should be a MIN and MAX frequencies defined so that multiple dongles do not overlap.
 
-After starting the script it will automatically scan the frequency range on the 10kHz borders. So, if the sampling rate is set as in the example above to 2400000, then it will scan 240 different frequencies. That’s why I tune somewhere in the middle of a 10kHz. This solution is much easier to implement as to go over all peaks in the spectrum.
+~~After starting the script it will automatically scan the frequency range on the 10kHz borders. So, if the sampling rate is set as in the example above to 2400000, then it will scan 240 different frequencies. That’s why I tune somewhere in the middle of a 10kHz. This solution is much easier to implement as to go over all peaks in the spectrum.~~
 
-If a peak is detected on a 10kHz border the *iq_server* will allocate a slot for it until that signal vanishes. The script automatically adjusts to the signal noise floor, so the slot is allocated when the peak is bigger than current noise floor level + the threshold defined by the script's '-t' parameter (its 5dB in the example above). There's maximum number of slots defined which should correlate to the one defined for the *iq_server*. Currently it is 6 because I cannot receive more than 6 sondes at the same time anyway.
+After starting the script it will automatically scan the frequency range with 2 kHz steps (adjustable) to find signal peaks. Minimum 2 kHz is used to avoid ±1kHz jumps around the detected peak. 
+
+If a peak is detected the *iq_server* will allocate a slot for it until that signal vanishes. The script automatically adjusts to the signal noise floor, so the slot is allocated when the peak is bigger than current noise floor level + the threshold defined by the script's '-t' parameter (its 5dB in the example above). There's maximum number of slots defined which should correlate to the one defined for the *iq_server*. Currently it is 6 because I cannot receive more than 6 sondes at the same time anyway.
 
 If detected signal isn't recognized as a sonde within 60 seconds then its slot will be deallocated. This can be useful if all slots are allocated but one of signals isn't a sonde. And at the same time there is another sonde signal which is actively sending but can't be received because there's no free slots for it.
 
@@ -60,7 +62,7 @@ In this picture 3 sondes are visible.
 *gnuplot* related script can be found in my [dotfiles](https://github.com/flux242/dotfiles) repository.
 
 ### Show me the sondes on a map!
-I'm using YACC to show the sondes. YACC is a java app in a jar so I have no problem to start it after installing *openjdk-8-jre*. YACC UI is very badly designed and it is slow at rendering but it'll do. I have written an [article about it](http://flux242.blogspot.com/2020/08/yaac-is-not-yak.html). A good thing about it - is that I can inject additional info if I want to. As an example I'm injecting temperature info from my wireless [temperature sensors](/pics/yacc.png)
+I'm using YACC to show the sondes. YACC is a java app in the jar so I have no problem to start it after installing *openjdk-8-jre*. YACC UI is very badly designed and it is slow at rendering but it'll do. I have written an [article about it](http://flux242.blogspot.com/2020/08/yaac-is-not-yak.html). A good thing about it - is that I can inject additional info if I want to. As an example I'm injecting temperature info from my wireless [temperature sensors](/pics/yacc.png)
 
 ### Logging
 I log sondes using *logsonde.sh* script
@@ -92,3 +94,5 @@ so, receiving 5-6 sondes at the same time is the maximum.
 
 ## Possible improvements
 - add MIN and MAX frequencies parameters to exclude aliasing on the left side and also make it ready for multi-dongle usage scenario
+- configurable address to broadcast sondes json output. Currently it is broadcasted locally on the UDP port 5676. 
+- usage scenario when two script instances are started on the same computer. Currently it won't work because the they would use the same UDP ports for interprocess communication

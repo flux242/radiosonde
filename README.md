@@ -9,7 +9,7 @@ As far as the sondes decoder were already written by Zilog80 I only needed a scr
 First, I've written a [simple script](http://flux242.blogspot.com/2020/08/how-to-receive-and-decode-multiple.html) that would multiplex the IQ samples received from the *rtl-sdr* dongle and then would shift and filter baseband signal using [csdr](https://github.com/ha7ilm/csdr) framework. It worked to some extent but wasn't very flexible. And then Zilog80 told me about his new channelizer - *iq_server*. After [some iterations](http://flux242.blogspot.com/2020/08/how-to-receive-and-decode-multiple_10.html) and improvements the *receivemultisonde.sh* script was ready.
 
 ## receivemultisonde.sh
-This script is used to receive multiple sondes at a time by scanning baseband signal.
+This script is used to receive multiple sondes at a time using only one rtl-sdr dongle by scanning baseband signal.
 
 Main advantages over aforementioned frameworks:
 - Simplicity. It's only about 170 lines of code!

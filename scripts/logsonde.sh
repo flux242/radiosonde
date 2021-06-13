@@ -12,6 +12,7 @@ log_info()
 
 #20201006-050351_R3320158_RS41_402700_sonde.log
 #$(date +%Y%m%d-%H%M%S)
+# date +%Y-%m-%dT%H:%M:%S.%3N%Z --date="2021-06-12T00:40:29.000Z" 2>/dev/null
 #echo '{"type":"RS41","frame":9144,"id":"S3440298","datetime":"2021-02-27T06:52:04.001Z","lat":48.32432,"lon":9.62179,"alt":9996.93769,"vel_h":19.53257,"heading":216.75179,"vel_v":-6.84676,"sats":9,"bt":29126,"batt":2.6,"temp":-50.1,"humidity":7.2,"subtype":"RS41-SGP","freq":"404500000"}'
 #  id=$(echo "$LINE" | jq -rc 'select(.lat)|[ .lat, .lon ]|"\(.[0]);\(.[1])"'
 
@@ -34,7 +35,10 @@ while read LINE; do
       sonde_aux=$(echo "$LINE" | jq -rc '.aux|select(.!=null)')
       [ -n "$sonde_aux" ] && sonde_type="$sonde_type-Ozone"
       sonde_freq=$(echo "$LINE" | jq -rc '.freq|select(.!=null)')
-      active_logs[$id]="$(date +%Y%m%d-%H%M%S)_${id}_${sonde_type}_${sonde_freq}_sonde.log"
+      sonde_date=$(echo "$LINE" | jq -rc '.datetime|select(.!=null)')
+      file_date=$(date +%Y%m%d-%H%M%S --date="$sonde_date" 2>/dev/null)
+      [ -n "$file_date" ] || file_date=$(date +%Y%m%d-%H%M%S)
+      active_logs[$id]="${file_date}_${id}_${sonde_type}_${sonde_freq}_sonde.log"
       log_info "Opening new log file ${active_logs[$id]}"
     fi
   }

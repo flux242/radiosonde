@@ -179,4 +179,46 @@ function lla2enu(lat, lon, alt, lat0,lon0,alt0)
   return ecef2enu(p1[1],p1[2],p1[3], lat0, lon0, alt0)
 }
 
+###############################################################################
+# Converts the Earth-Centered Earth-Fixed (ECEF) coordinates (x, y, z) in meters
+# to lat lon alt. WGS-84 model is used
+#
+#  ----Test 1---------
+# Inputs:   -576793.17, -5376363.47, 3372298.51
+# Expected: 32.12345, -96.12345, 500.0
+# awk -i ./latlon-spherical.awk 'BEGIN{print ecef2lla(-576793.17, -5376363.47, 3372298.51)}'
+# 32.1235 -96.1235 499.998
+# Actuals:  32.12345004807767, -96.12345000213524, 499.997958839871
+#-----Test 2---------
+# Inputs:   2297292.91, 1016894.94, -5843939.62
+# Expected: -66.87654, 23.87654, 1000.0
+# awk -i ./latlon-spherical.awk 'BEGIN{print ecef2lla(2297292.91, 1016894.94, -5843939.62)}'
+# -66.8765 23.8765 999.998
+#Actuals:  -66.87654001741278, 23.87653991401422, 999.9983866894618
+function ecef2lla(x, y, z)
+{
+  # WGS84 ellipsoid constants
+  a = 6378137; # radius
+  e = 8.1819190842622e-2; # eccentricity
 
+  asq = a^2;
+  esq = e^2;
+
+  b   = sqrt( asq * (1-esq) );
+  bsq = b^2;
+  ep  = sqrt( (asq - bsq)/bsq );
+  p   = sqrt( x^2 + y^2 );
+  th  = atan2(a*z, b*p);
+
+  lon = atan2(y,x);
+  lat = atan2( (z + ep^2*b*sin(th)^3 ), (p - esq*a*cos(th)^3) );
+  N = a / sqrt(1-esq*sin(lat)^2);
+  alt = p / cos(lat) - N;
+
+  # mod lat to 0-2pi
+  lon = lon % (2*PI);
+
+  # correction for altitude near poles left out.
+
+  return to_degrees(lat)" "to_degrees(lon)" "alt;
+}

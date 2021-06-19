@@ -223,7 +223,7 @@ if($udp) {
     $kissheader = kissmkhead("APRS",uc($mycallsign));
 }
 $passcode = generate_passcode($mycallsign);
-print $fpo "user $mycallsign pass $passcode vers \"M0ROZ decoder\" 0v1 filter m/1\n\n";
+print $fpo "user $mycallsign pass $passcode vers \"N0CALL decoder\" 0v1 filter m/1\n\n";
 $homeaprslat = lat2aprs($homelat);
 $homeaprslon = lon2aprs($homelon);
 

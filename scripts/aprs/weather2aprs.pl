@@ -87,9 +87,9 @@ while (<>) {
     }
   }
   if (defined $pressure and defined $temp and defined $humid) {
-    printf("%s-13>APNL51,TCPIP*,qAI,%s-13:!%s/%s_000/000t%03db%dh%02d\n",
+    printf("%s-13>APRS,TCPIP*,%s-13:!%s/%s_000/000t%03db%dh%02d\n",
            ${mycallsign}, ${mycallsign}, lat2aprs($homelat), lon2aprs($homelon),${temp}, ${pressure}, ${humid});
-    printf("%s-13>APNL51,TCPIP*,qAI,%s-13:!%s/%sW\n", ${mycallsign}, ${mycallsign}, lat2aprs($homelat), lon2aprs($homelon));
+    printf("%s-13>APRS,TCPIP*,%s-13:!%s/%sW\n", ${mycallsign}, ${mycallsign}, lat2aprs($homelat), lon2aprs($homelon));
   }
 }
 

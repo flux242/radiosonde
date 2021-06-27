@@ -64,6 +64,33 @@ In this picture 3 sondes are visible.
 ### Show me the sondes on a map!
 I'm using YACC to show the sondes. YACC is a java app in the jar so I have no problem to start it after installing *openjdk-8-jre*. YACC UI is very badly designed and it is slow at rendering but it'll do. I have written an [article about it](http://flux242.blogspot.com/2020/08/yaac-is-not-yak.html). A good thing about it - is that I can inject additional info if I want to. As an example I'm injecting temperature info from my wireless [temperature sensors](/pics/yacc.png)
 
+Note: Actually I finally found some time and compiled the *aprsmap* from dlxaprs project and am uing it instead of the YACC.
+```
+sudo apt install libpng-dev # to compile dlxaprs
+sudo apt install libx11-dev # to compile dlxaprs
+sudo apt install libjpeg-dev # to compile dlxaprs
+
+gcc -Ofast -o aprsmap aprsmap.c osic.c aprsdecode.c aprsstr.c useri.c osi.c maptool.c aprstat.c pngread.c aprspos.c aprstext.c libsrtm.c pngwrite.c tcp.c xosi.c jpgdec.c udp.c Select.c pastewrapper.c beep.c -lm -lpng -ljpeg -lX11
+```
+The same trick with a fake APRS-IS server is used also with the aprsmap.
+To compile the aprsmap I also had to do the following additionally:
+- replace everywhere '#include <osic.h>' with '#include "osic.h"'
+- apply the following patch:
+```diff
+diff --git a/src/osic.c b/src/osic.c
+index c615b92..58a2b37 100644
+--- a/src/osic.c
++++ b/src/osic.c
+@@ -596,6 +596,7 @@ void *osic_chkptr(void *p)
+ 
+ int32_t osic_setsystime(uint32_t * time0)
+ {
+-       return stime(time0);
++//     return stime(time0);
++  return clock_settime(CLOCK_REALTIME,time0);
+ }
+```
+
 ### Logging
 I log sondes using *logsonde.sh* script
 ```

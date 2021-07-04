@@ -186,18 +186,18 @@ scan_power_peaks()
     ) |
     awk -F',' -v tf=$TUNER_FREQ -v sr=$TUNER_SAMPLE_RATE -v sb=$SCAN_BINS -v thr=$SCAN_POWER_THRESHOLD \
             -v msw=$SCAN_SIGNAL_MIN_WIDTH -v al=$SCAN_DC_REMOVAL_AVERAGING -v ost=$SCAN_OUTPUT_STEP '
-    BEGIN{count=0;}
+    BEGIN{count=0}
     {
       sum=$1;
       for(i=2;i<=NF;++i) {
-        sum = sum + ($i-sum)/al;
+        sum += ($i-sum)/al;
         if(($i-sum)>thr) {
           if(count==0){idx=i-1;}
           ++count;
         }
         else {
           if(count>=msw) {
-            idx=idx+count/2;
+            idx+=(count/2);
             peak_freq=(tf-sr/2)+int(sr/sb*idx);
             peak_freq=ost*int((peak_freq+500)/ost);
             printf("%d %.2f\n", peak_freq, $idx);
@@ -214,12 +214,12 @@ start_decoder()
   local decoder bw
 
   case "$1" in
-    RS41) decoder="$DECODERS_PATH/rs41mod --ptu --ecc --crc --json";bw=10 ;;
-    RS92) decoder="$DECODERS_PATH/rs92mod --ptu --crc --ecc --json";bw=10 ;;
-    DFM9) decoder="$DECODERS_PATH/dfm09mod --ptu --ecc --json";[ -n "$2" -a "$2" -lt 0 ] && decoder="$decoder -i";bw=10 ;;
-     M10) decoder="$DECODERS_PATH/m10mod --ptu --json";bw=19.2 ;;
-  C34C50) decoder="$DECODERS_PATH/c50dft -d1 --ptu --json";bw=19.2 ;;
-     MRZ) decoder="$DECODERS_PATH/mp3h1mod --ptu --ecc --json";bw=12 ;;
+    RS41) decoder="$DECODERS_PATH/rs41mod --json --ptu --ecc3";bw=10 ;;
+    RS92) decoder="$DECODERS_PATH/rs92mod --json --ptu";bw=10 ;;
+    DFM9) decoder="$DECODERS_PATH/dfm09mod --json --ptu --ecc2";[ -n "$2" -a "$2" -lt 0 ] && decoder="$decoder -i";bw=10 ;;
+     M10) decoder="$DECODERS_PATH/m10mod --json --ptu";bw=19.2 ;;
+  C34C50) decoder="$DECODERS_PATH/c50dft --json --ptu -d1";bw=19.2 ;;
+     MRZ) decoder="$DECODERS_PATH/mp3h1mod --json --ptu --ecc";bw=12 ;;
        *) decoder="(cat /dev/stdin >/dev/null)"; debug "ERROR: Unsupported sonde type: $1" ;;
   esac
 
@@ -242,10 +242,16 @@ start_decoder()
     fi
   }
 
-  "$IQ_SERVER_PATH"/iq_fm --lpbw $bw - 48000 32 --bo 16 |
-  sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
-  tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) |
+  "$IQ_SERVER_PATH"/iq_fm --wav --lpbw $bw - 48000 32 --bo 16 |
+  tee >(aplay -r 48000 -f S16_LE -t wav -c 1 -B 500000 &> /dev/null) |
   eval "$decoder >/dev/stderr"
+
+# The code below contains highpass filter to remove DC component
+# DC removal is done by the iq_server
+#  "$IQ_SERVER_PATH"/iq_fm --lpbw $bw - 48000 32 --bo 16 |
+#  sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
+#  tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) |
+#  eval "$decoder >/dev/stderr"
 }
 
 decode_sonde_with_type_detect()

@@ -13,6 +13,7 @@ SCAN_POWER_THRESHOLD=5 # signal is detected if its power is above noise level + 
 SCANNER_OUT_PORT=5676
 SCANNER_COM_PORT=5677
 DECODER_PORT=5678
+DECODER_BROADCAST_IP=127.255.255.255 # broadcasted locally by default
 DEBUG_PORT=5675
 
 SLOT_TIMEOUT=10 # i.e 30 seconds *10 = 5 minutes
@@ -242,16 +243,10 @@ start_decoder()
     fi
   }
 
-  "$IQ_SERVER_PATH"/iq_fm --wav --lpbw $bw - 48000 32 --bo 16 |
-  tee >(aplay -r 48000 -f S16_LE -t wav -c 1 -B 500000 &> /dev/null) |
+  "$IQ_SERVER_PATH"/iq_fm --lpbw $bw - 48000 32 --bo 16 |
+  sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
+  tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) |
   eval "$decoder >/dev/stderr"
-
-# The code below contains highpass filter to remove DC component
-# DC removal is done by the iq_server
-#  "$IQ_SERVER_PATH"/iq_fm --lpbw $bw - 48000 32 --bo 16 |
-#  sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
-#  tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) |
-#  eval "$decoder >/dev/stderr"
 }
 
 decode_sonde_with_type_detect()
@@ -264,7 +259,7 @@ decode_sonde_with_type_detect()
              else start_decoder $type;
              fi) &>/dev/stdout |
     grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' |
-    socat -u - UDP4-DATAGRAM:127.255.255.255:$DECODER_PORT,broadcast,reuseaddr
+    socat -u - UDP4-DATAGRAM:$DECODER_BROADCAST_IP:$DECODER_PORT,broadcast,reuseaddr
 }
 
 

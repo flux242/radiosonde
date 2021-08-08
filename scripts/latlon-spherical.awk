@@ -41,7 +41,7 @@ function calc_distance(lat1,lon1,lat2,lon2,    radius)
 
 
 #######################################################################################
-#  Returns the (initial) bearing from ‘this’ point to destination point.
+#  Returns the (initial) bearing from point1 to point2.
 #
 #  @param  lat1 - Latitude  of initial point.
 #  @param  lon1 - Longitude of initial point.
@@ -119,6 +119,51 @@ function calc_intersection(lat1, lon1, bearing1, lat2, lon2, bearing2)
   lon3 = p1[2] + dlon13;
 
   return to_degrees(lat3)";"(to_degrees(lon3)+540)%360 - 180;
+}
+
+
+
+#######################################################################################
+#  Returns the destination point from input point having travelled the given distance on the
+#  given initial bearing (bearing normally varies around path followed).
+#
+#  @param  lat1 - Latitude  of first point.
+#  @param  lon1 - Longitude of first point.
+#  @param  bearing1 - Initial bearing from first point.
+#  @param  distance - distance to the destination point in meters.
+#  @param  radius - Optional (Mean) radius of earth in meters (defaults to 6371e3).
+#
+#  @returns Destination Point lat and lon.
+#
+#  @example
+#
+#        destination_point(51.4778, -0.0015, 300.7, 7794) // 51.5135°N, 000.0983°W
+#
+function destination_point(lat1, lon1, bearing1, distance,    radius)
+{
+  if (length(radius)!=0){R = radius}else{R = 6371e3}
+  # sinφ2 = sinφ1⋅cosδ + cosφ1⋅sinδ⋅cosθ
+  # tanΔλ = sinθ⋅sinδ⋅cosφ1 / cosδ−sinφ1⋅sinφ2
+  # see http://williams.best.vwh.net/avform.htm#LL
+
+  delta = distance / R; # angular distance in radians
+  theta = to_radians(bearing1);
+
+  phi1 = to_radians(lat1);
+  lambda1 = to_radians(lon1);
+
+  sinPhi1 = sin(phi1); cosPhi1 = cos(phi1);
+  sinDelta = sin(delta); cosDelta = cos(delta);
+  sinTheta = sin(theta); cosTheta = cos(theta);
+
+
+  sinPhi2 = sinPhi1*cosDelta + cosPhi1*sinDelta*cosTheta;
+  phi2 = asin(sinPhi2);
+  y = sinTheta * sinDelta * cosPhi1;
+  x = cosDelta - sinPhi1 * sinPhi2;
+  lambda2 = lambda1 + atan2(y, x);
+
+  return to_degrees(phi2)";"(to_degrees(lambda2)+540)%360 - 180; # normalise to −180..+180°
 }
 
 function lla2ecef(lat,lon,alt)

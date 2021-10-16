@@ -5,7 +5,6 @@
 
 . ./defaults.conf
 
-SCAN_BINS=4096
 SCAN_OUTPUT_STEP=10000  # in Hz
 SCAN_POWER_NOISE_LEVEL_INIT=-69 # initial noise level
 SCAN_POWER_THRESHOLD=5 # signal is detected if its power is above noise level + this value
@@ -117,7 +116,7 @@ shift "$((OPTIND-1))"
 
 DECIMATE=$((TUNER_SAMPLE_RATE/DEMODULATOR_OUTPUT_FREQ))
 [[ "$((DECIMATE*DEMODULATOR_OUTPUT_FREQ))" -ne "$TUNER_SAMPLE_RATE" ]] && show_error_exit "Sample rate should be multiple of $DEMODULATOR_OUTPUT_FREQ"
-
+SCAN_BINS=$(awk -v tsr="$TUNER_SAMPLE_RATE" 'BEGIN{print lshift(1, int(log(tsr/400)/log(2)))}')
 
 cleanup()
 {
@@ -310,5 +309,5 @@ pid3=$!
 trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM
 
 rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
-"$IQ_SERVER_PATH"/iq_server --fft /tmp/fft.out --bo 32 - 2400000 8
+"$IQ_SERVER_PATH"/iq_server --fft /tmp/fft.out --bo 32 - $TUNER_SAMPLE_RATE 8
 

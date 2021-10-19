@@ -118,6 +118,11 @@ DECIMATE=$((TUNER_SAMPLE_RATE/DEMODULATOR_OUTPUT_FREQ))
 [[ "$((DECIMATE*DEMODULATOR_OUTPUT_FREQ))" -ne "$TUNER_SAMPLE_RATE" ]] && show_error_exit "Sample rate should be multiple of $DEMODULATOR_OUTPUT_FREQ"
 SCAN_BINS=$(awk -v tsr="$TUNER_SAMPLE_RATE" 'BEGIN{print lshift(1, int(log(tsr/400)/log(2)))}')
 
+AUDIO_OUTPUT_CMD="tee >(aplay -r $DEMODULATOR_OUTPUT_FREQ -f S16_LE -t wav -c 1 -B 500000 &> /dev/null)"
+[[ "yes" = "$AUDIO_OUTPUT" ]] || AUDIO_OUTPUT_CMD="cat -"
+SOX_IF_FILTER_CMD="sox -t wav - -t wav - highpass 10 gain +5"
+[[ "yes" = "$SOX_IF_FILTER" ]] || SOX_IF_FILTER_CMD="cat -"
+
 cleanup()
 {
   local children child
@@ -242,9 +247,9 @@ start_decoder()
     fi
   }
 
-  "$IQ_SERVER_PATH"/iq_fm --lpbw $bw - 48000 32 --bo 16 |
-  sox -t raw -esigned-integer -b 16 -r 48000 - -b 8 -c 1 -t wav - highpass 10 gain +5 |
-  tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) |
+  "$IQ_SERVER_PATH"/iq_fm --lpbw $bw - $DEMODULATOR_OUTPUT_FREQ 32 --bo 16 --wav |
+  eval "$SOX_IF_FILTER_CMD" |
+  eval "$AUDIO_OUTPUT_CMD" |
   eval "$decoder >/dev/stderr"
 }
 

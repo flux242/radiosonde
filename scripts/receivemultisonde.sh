@@ -30,7 +30,7 @@ SCRIPT_DEPENDENCIES+=(${SUPPORTED_DECODERS[@]})
 show_error_exit()
 {
   echo "$1" >&2
-  echo "For help: $(basename $0) -h"
+  echo "For help: $(basename $0) -h" >&2
   exit 2
 }
 
@@ -75,6 +75,15 @@ Script output:
 - local UDP port 5678 decoders output in json form:
   {"type":"RS41","frame":5174,"id":"S3440233", ...}
 
+Options:
+  -h prints this help message
+  -f tuner tune frequency
+  -s tuner sample rate
+  -g tuner gain (0 - auto gain)
+  -P tuner PPM
+  -t power threshold
+  -b broadcast decoder JSON output to the local network (port 5678)
+
 Following programs are required to start the script:
 $(show_dependencies)
 HEREDOC
@@ -95,7 +104,7 @@ debug()
 check_dependencies
 
 OPTIND=1 #reset index
-while getopts "ha:p:f:s:g:p:P:t:" opt; do
+while getopts "bha:p:f:s:g:p:P:t:" opt; do
   case $opt in
      h)  show_usage; exit 0; ;;
      a)  address="$OPTARG" ;;  # not used atm
@@ -105,8 +114,9 @@ while getopts "ha:p:f:s:g:p:P:t:" opt; do
      g)  TUNER_GAIN="$OPTARG" ;;
      P)  DONGLE_PPM="$OPTARG" ;;
      t)  SCAN_POWER_THRESHOLD="$OPTARG" ;;
-     \?) exit 1 ;;
-     :)  echo "Option -$OPTARG requires an argument" >&2;exit 1 ;;
+     b)  do_broadcast=1 ;;
+     \?) show_error_exit ;;
+     :)  show_error_exit "Option -$OPTARG requires an argument" ;;
   esac
 done
 shift "$((OPTIND-1))"
@@ -122,6 +132,22 @@ AUDIO_OUTPUT_CMD="tee >(aplay -r $DEMODULATOR_OUTPUT_FREQ -f S16_LE -t wav -c 1 
 [[ "yes" = "$AUDIO_OUTPUT" ]] || AUDIO_OUTPUT_CMD="cat -"
 SOX_IF_FILTER_CMD="sox -t wav - -t wav - highpass 10 gain +5"
 [[ "yes" = "$SOX_IF_FILTER" ]] || SOX_IF_FILTER_CMD="cat -"
+
+[[ "$do_broadcast" = "1" ]] && {
+  # try to detect the local network ip/24 and update DECODER_BROADCAST_IP
+  # in case of a complex network config edit DECODER_BROADCAST_IP manually
+  # and skip -b option
+  [[ -n "$(which ip)" ]] && {
+    iface_name="$(\ip -j r | jq -rc '.[] | select(.dst == "default").dev')"
+    [[ -n "$iface_name" ]] && {
+      bcast_addr="$(\ip -j a | jq -rc '.[] | select(.ifname == "'"$iface_name"'").addr_info[]|select(.broadcast).broadcast')"
+      [[ -n "$bcast_addr" ]] && {
+        DECODER_BROADCAST_IP="$bcast_addr"
+echo "BCAST ADDR: $DECODER_BROADCAST_IP"
+      }
+    }
+  }
+}
 
 cleanup()
 {
@@ -256,13 +282,13 @@ start_decoder()
 decode_sonde_with_type_detect()
 {
     "$IQ_SERVER_PATH"/iq_client --freq $(calc_bandpass_param "$(($1-TUNER_FREQ))" "$TUNER_SAMPLE_RATE") |
-    (type=$(timeout 60 "$DECODERS_PATH"/dft_detect --iq - 48000 32 | awk -F':' '{printf("%s %d", $1,100*$2)}');
+    (type=$(timeout 60 "$DECODERS_PATH"/dft_detect --iq - $DEMODULATOR_OUTPUT_FREQ 32 | awk -F':' '{printf("%s %d", $1,100*$2)}');
              debug "Type detected: $type on frequency $1"
              if [[ -z "$type" ]]; then
                (flock 200; echo "KILL $1") 200>$MUTEX_LOCK_FILE | socat -u - UDP4-DATAGRAM:127.255.255.255:$SCANNER_COM_PORT,broadcast,reuseaddr;cat - >/dev/null;
              else start_decoder $type;
              fi) &>/dev/stdout |
-    grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"freq":"'"$1"'"}' |
+    grep --line-buffered -E '^{' | jq --unbuffered -rcM '. + {"version":"2.42","freq":"'"$1"'"}' |
     socat -u - UDP4-DATAGRAM:$DECODER_BROADCAST_IP:$DECODER_PORT,broadcast,reuseaddr
 }
 
@@ -314,5 +340,5 @@ pid3=$!
 trap "cleanup $pid1 $pid2 $pid3" EXIT INT TERM
 
 rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - |
-"$IQ_SERVER_PATH"/iq_server --fft /tmp/fft.out --bo 32 - $TUNER_SAMPLE_RATE 8
+"$IQ_SERVER_PATH"/iq_server --fft /tmp/fft.out --bo 32 --if $DEMODULATOR_OUTPUT_FREQ - $TUNER_SAMPLE_RATE 8
 

@@ -59,21 +59,24 @@ static int pcm_dec_init(pcm_t *p) {
     float tbw;  // dec_lowpass: transition_bandwidth/Hz
     int taps;   // dec_lowpass: taps
 
-    if (p->opt_IFmin) IF_sr = IF_SAMPLE_RATE_MIN;
+    if (p->opt_IFmin) IF_sr = p->opt_IFmin;
     if (IF_sr > sr_base) IF_sr = sr_base;
     if (IF_sr < sr_base) {
         while (sr_base % IF_sr) IF_sr += 1;
         decM = sr_base / IF_sr;
     }
 
-    f_lp = (IF_sr+20e3)/(4.0*sr_base);
-    tbw  = (IF_sr-20e3)/*/2.0*/;
-    if (p->opt_IFmin) {
-        tbw = (IF_sr-12e3);
-    }
-    if (tbw < 0) tbw = 10e3;
-    taps = sr_base*4.0/tbw; if (taps%2==0) taps++;
-
+//    f_lp = (IF_sr+20e3)/(4.0*sr_base);
+//    tbw  = (IF_sr-20e3)/*/2.0*/;
+//    if (p->opt_IFmin) {
+//        tbw = (IF_sr-12e3);
+//    }
+//    if (tbw < 0) tbw = 10e3;
+//    taps = sr_base*4.0/tbw;
+    f_lp = (IF_sr)/(2.0*sr_base);
+    tbw = IF_sr;
+    taps = sr_base*2.0/tbw;
+    if (taps%2==0) taps++;
     taps = decimate_init(f_lp, taps);
 
     if (taps < 0) return -1;
@@ -592,6 +595,12 @@ int main(int argc, char **argv) {
             }
             pcm.bps_out = bps_out;
         }
+        else if (strcmp(*argv, "--if") == 0) {
+            int if_out = 0;
+            ++argv;
+            if (*argv) if_out = atoi(*argv); else return -1;
+            pcm.opt_IFmin = if_out;
+        }
         else {
             fp = fopen(*argv, "rb");
             if (fp == NULL) {
@@ -618,7 +627,7 @@ int main(int argc, char **argv) {
         return -50;
     }
 
-    pcm.opt_IFmin = option_min;
+//    pcm.opt_IFmin = option_min;
     pcm_dec_init( &pcm );
 
     block_decMB = calloc(pcm.decM*blk_sz+1, sizeof(float complex));  if (block_decMB == NULL) return -1;

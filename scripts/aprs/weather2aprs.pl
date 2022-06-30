@@ -72,8 +72,8 @@ while (<>) {
     my $id = $json->{"id"};
     defined $id or next;
 
-    "pressure sensor" eq $model or "inFactory sensor" eq $model or next;
-    242 == $id or 118 == $id or next;
+    "pressure sensor" eq $model or "inFactory-TH" eq $model or next;
+    242 == $id or 158 == $id or next;
 
     if (242 == $id) {
       # pressure sensor

@@ -23,7 +23,8 @@ while true; do
    read -t $TIMEOUT LINE
   if [ "$?" -gt 128 ]; then
     echo "Timeout detected, restarting the $pid1"
-    kill $(get_children_pids $pid1)
+    kill $pid1 $(get_children_pids $pid1)
+    sleep 10
     (./receivemultisonde.sh $@) &
     pid1=$!
   fi

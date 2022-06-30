@@ -204,7 +204,7 @@ sub deg2aprs {
 
 sub put_station_info {
   # use E instead of ` to show an eye instead of a radar
-  printf $fpo "%s-2>APNL51,TCPIP*,qAI,%s-2:!%s/%s`%s\n\n", $mycallsign, $mycallsign, $homeaprslat, $homeaprslon, $comment;
+  printf $fpo "%s-2>APRS,TCPIP*,%s-2:!%s/%s`%s\n\n", $mycallsign, $mycallsign, $homeaprslat, $homeaprslon, $comment;
 }
 
 $SIG{ALRM} = sub {

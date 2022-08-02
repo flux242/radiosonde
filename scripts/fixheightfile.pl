@@ -26,7 +26,24 @@ use warnings;
 my $hgtfile  = shift @ARGV;
 
 die "Usage: $0 height file\n" if not $hgtfile;
+die "$hgtfile file is not found\n" if not -e $hgtfile;
 
+my $HGT_3_SEC_ROW_SIZE = 1201;
+my $HGT_1_SEC_ROW_SIZE = 3601;
+
+my $rowSize = 0;
+
+my $fileSize = -s $hgtfile;
+die "hgt file should be either " . 1201*1201*2 . " or " . 3601*3601*2 . " bytes in size\n" if not ($fileSize==1201*1201*2 or $fileSize==3601*3601*2);
+
+#print $fileSize . "\n";
+if ($HGT_3_SEC_ROW_SIZE*$HGT_3_SEC_ROW_SIZE*2 == $fileSize) {
+  $rowSize = $HGT_3_SEC_ROW_SIZE;
+}
+if ($HGT_1_SEC_ROW_SIZE*$HGT_1_SEC_ROW_SIZE*2 == $fileSize) {
+  $rowSize = $HGT_1_SEC_ROW_SIZE;
+}
+die if ($rowSize == 0);
 
 #print STDERR "heightfile: $hgtfile\n";
 
@@ -54,7 +71,7 @@ while (1) {
       $point{"up"} = -32768;
       $point{"down"} = -32768;
       # read word to the right
-      if ( ($point{"offset"} % (1201*2)) < 1200*2 ) { 
+      if ( ($point{"offset"} % ($rowSize*2)) < (($rowSize-1)*2) ) {
         $success = read $in, $bytes, 2;
         if ($success) {
           $value = unpack('n', $bytes);
@@ -63,7 +80,7 @@ while (1) {
         }
       }
       # read word to the left
-      if ( ($point{"offset"} % (1201*2)) > 0 ) { 
+      if ( ($point{"offset"} % ($rowSize*2)) > 0 ) {
         seek($in, $point{"offset"} - 2, 0);
         $success = read $in, $bytes, 2;
         if ($success) {
@@ -73,8 +90,8 @@ while (1) {
         }
       }
       # read word above
-      if ( $point{"offset"} > 1200*2 ) { 
-        seek($in, $point{"offset"} - 1201*2, 0);
+      if ( $point{"offset"} > (($rowSize-1)*2) ) {
+        seek($in, $point{"offset"} - $rowSize*2, 0);
         $success = read $in, $bytes, 2;
         if ($success) {
           $value = unpack('n', $bytes);
@@ -83,8 +100,8 @@ while (1) {
         }
       }
       # read word below
-      if ( $point{"offset"} < 1201*1200*2 ) { 
-        seek($in, $point{"offset"} + 1201*2, 0);
+      if ( $point{"offset"} < ($rowSize*($rowSize-1)*2) ) {
+        seek($in, $point{"offset"} + $rowSize*2, 0);
         $success = read $in, $bytes, 2;
         if ($success) {
           $value = unpack('n', $bytes);
@@ -157,7 +174,7 @@ while (1) {
     }
 
     $offset += 2;
-    if (not $offset % (2*1201*1201)) {
+    if (not $offset % (2*$rowSize*$rowSize)) {
       last;
     }    
 }

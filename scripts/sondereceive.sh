@@ -85,7 +85,7 @@ detect_sonde_type() {
   ./csdr bandpass_fir_fft_cc -$bpf $bpf 0.02 | \
   ./csdr fmdemod_quadri_cf | ./csdr limit_ff | ./csdr convert_f_s16 | \
   sox -t raw -esigned-integer -b 16 -r $DEMODULATOR_OUTPUT_FREQ - -b 8 -c 1 -t wav - highpass 10 gain +5 | \
-  tee >(aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null) | \
+  tee >(aplay -r $DEMODULATOR_OUTPUT_FREQ -f S8 -t wav -c 1 -B 500000 &> /dev/null) | \
   $DECODERS_PATH/dft_detect /dev/stdin | awk -F':' '{printf("%s %d", $1,100*$2)}'
 }
 
@@ -158,14 +158,15 @@ decode_sonde_wav()
         eval "$decoder > /dev/stderr"
       fi
     ) | \
-    aplay -r 48000 -f S8 -t wav -c 1 -B 500000 &> /dev/null
+    aplay -r $DEMODULATOR_OUTPUT_FREQ -f S8 -t wav -c 1 -B 500000 &> /dev/null
 } 
 
 # TODO: add a switch to use rtlclient2.sh instead of the rtl_sdr
 if [ -z "$WAV_INPUT" ]; then
   rtl_sdr -p $DONGLE_PPM -f $TUNER_FREQ -g $TUNER_GAIN -s $TUNER_SAMPLE_RATE - 2>/dev/null | tee >(log_power >/dev/stderr) | decode_sonde
 else
-  decode_sonde_wav
+  # if wav input is specified then we need to overwrite the default value of the DEMODULATOR_OUTPUT_FREQ
+  DEMODULATOR_OUTPUT_FREQ=48000 decode_sonde_wav
 fi
 
 #######################################################################################################

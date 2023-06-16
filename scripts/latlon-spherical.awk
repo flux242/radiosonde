@@ -22,7 +22,7 @@ function to_degrees(rad){return rad/DEG}
 #  @example
 #      dist = calc_distance(52.205, 0.119, 48.857, 2.351); // 404.3 km
 #
-function calc_distance(lat1,lon1,lat2,lon2,    radius)
+function calc_distance(lat1,lon1,lat2,lon2,    radius,phi1,phi2,deltaphi,deltalambda,a,c,d)
 {
   if (length(radius)!=0){R = radius}else{R = 6371e3}
   phi1 = to_radians(lat1); lambda1 = to_radians(lon1);
@@ -53,7 +53,7 @@ function calc_distance(lat1,lon1,lat2,lon2,    radius)
 #  @example
 #      calc_bearing( 52.205, 0.119, 48.857, 2.351) // 156.2°
 #
-function calc_bearing(lat1,lon1,lat2,lon2)
+function calc_bearing(lat1,lon1,lat2,lon2,    phi1,phi2,deltalambda,y,x,theta)
 {
   phi1 = to_radians(lat1); phi2 = to_radians(lat2);
   deltalambda = to_radians(lon2 - lon1);
@@ -81,7 +81,7 @@ function calc_bearing(lat1,lon1,lat2,lon2)
 #
 #        calc_intersection(51.8853, 0.2545, 108.547, 49.0034, 2.5735, 32.435) // 50.9078°N, 004.5084°E
 #
-function calc_intersection(lat1, lon1, bearing1, lat2, lon2, bearing2)
+function calc_intersection(lat1, lon1, bearing1, lat2, lon2, bearing2,    p1,p2,dlat,dlon,delta12,theatA,thetaB,alpha1,alpha2,alpha3,dlon13,lat3,lon3)
 {
   p1[1] = to_radians(lat1); p1[2] = to_radians(lon1); p1[3] = to_radians(bearing1);
   p2[1] = to_radians(lat2); p2[2] = to_radians(lon2); p2[3] = to_radians(bearing2);
@@ -139,7 +139,7 @@ function calc_intersection(lat1, lon1, bearing1, lat2, lon2, bearing2)
 #
 #        destination_point(51.4778, -0.0015, 300.7, 7794) // 51.5135°N, 000.0983°W
 #
-function destination_point(lat1, lon1, bearing1, distance,    radius)
+function destination_point(lat1, lon1, bearing1, distance,    radius,R,delta,theta,phi1,lambda1,lambda2,phi2,x,y)
 {
   if (length(radius)!=0){R = radius}else{R = 6371e3}
   # sinφ2 = sinφ1⋅cosδ + cosφ1⋅sinδ⋅cosθ
@@ -166,7 +166,7 @@ function destination_point(lat1, lon1, bearing1, distance,    radius)
   return to_degrees(phi2)";"(to_degrees(lambda2)+540)%360 - 180; # normalise to −180..+180°
 }
 
-function lla2ecef(lat,lon,alt)
+function lla2ecef(lat,lon,alt,    a,e,N,x,y,z)
 {
   # WGS84 ellipsoid constants:
   a = 6378137;
@@ -186,7 +186,7 @@ function lla2ecef(lat,lon,alt)
 # Converts the Earth-Centered Earth-Fixed (ECEF) coordinates (x, y, z) to
 # East-North-Up coordinates in a Local Tangent Plane that is centered at the
 # (WGS-84) Geodetic point (lat0, lon0, alt0).
-function ecef2enu(x, y, z, lat0,lon0,alt0)
+function ecef2enu(x, y, z, lat0,lon0,alt0,     e,lambda,phi,s,N,sin_lambda,cos_lambda,cos_phi,sin_phi,x0,y0,z0,xd,yd,zd,xEast,yNorth,zUp)
 {
   e = 8.1819190842622e-2;
   lambda = to_radians(lat0);
@@ -215,7 +215,7 @@ function ecef2enu(x, y, z, lat0,lon0,alt0)
   return xEast" "yNorth" "zUp
 }
 
-function lla2enu(lat, lon, alt, lat0,lon0,alt0)
+function lla2enu(lat, lon, alt, lat0,lon0,alt0,    ecefstr,n1)
 {
   ecefstr=lla2ecef(lat,lon,alt);
   n1=split(ecefstr,p1," ");
@@ -240,7 +240,7 @@ function lla2enu(lat, lon, alt, lat0,lon0,alt0)
 # awk -i ./latlon-spherical.awk 'BEGIN{print ecef2lla(2297292.91, 1016894.94, -5843939.62)}'
 # -66.8765 23.8765 999.998
 #Actuals:  -66.87654001741278, 23.87653991401422, 999.9983866894618
-function ecef2lla(x, y, z)
+function ecef2lla(x, y, z,    a,e,asq,esq,b,bsq,ep,p,th,lon,lat,N,alt)
 {
   # WGS84 ellipsoid constants
   a = 6378137; # radius

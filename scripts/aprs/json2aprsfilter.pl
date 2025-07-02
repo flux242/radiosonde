@@ -22,14 +22,15 @@ defined $homelon or $homelon = 0.0;
 $homelat != 0.0 or die "Home latitude should not be 0.0";
 $homelon != 0.0 or die "Home longitude should not be 0.0";
 
-my $max_distance_m    = 1000000; # 1000 km
+my $max_distance_m    = 600000;  # 600 km
 my $max_altitude_m    = 50000;   # 50 km
 my $min_altitude_m    = -50;     # -50 m
 my $min_sats          = 4;       # minimum number of sats
 
 # if a sonde is above $decimation_alt altitude then
 # don't commit to the server too often to not overload it
-my $decimation_period = 15;      # commit to the server each N seconds
+#my $decimation_period = 15;      # commit to the server each N seconds
+my $decimation_period = 1;      # 1 - no dicimation
 my $decimation_alt    = 3000;    # decimation activation altitude in m
 
 our %messages_dict;
@@ -81,18 +82,21 @@ while (<>) {
     my $distance = $distancejson->{"distance"};
     if ($distance > $max_distance_m) {
       print STDERR "Discarded by the distance filter: $_";
+      next;
     } 
 
     my $sats= $json->{"sats"};
     if (defined $sats) {
       if ($sats < $min_sats) {
         print STDERR "Discarded by the sats filter: $_";
+        next;
       } 
     }
 
     my $altitude = $json->{"alt"};
     if ($altitude > $max_altitude_m or $altitude < $min_altitude_m) {
       print STDERR "Discarded by the altitude filter: $_";
+      next;
     } 
 
     my $id = $json->{"id"};

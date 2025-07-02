@@ -18,6 +18,7 @@ Options:
   -p PPM,         PPM error (default: 0)
   -d ID,          Dongle ID
   -w,             input is a wav/raw 48kHz, 16bit, 1 channel stream
+  -z,             Sonde type if known already. This will skip detection step
 HEREDOC
 }
 
@@ -30,7 +31,7 @@ show_error_exit()
 
 
 OPTIND=1 #reset index
-while getopts "hwf:g:p:d:s:" opt; do
+while getopts "hwf:g:p:d:s:z:" opt; do
   case $opt in
      h)  show_usage $(basename $0); exit 0; ;;
      f)  TUNER_FREQ="$OPTARG" ;;
@@ -38,6 +39,7 @@ while getopts "hwf:g:p:d:s:" opt; do
      p)  DONGLE_PPM="$OPTARG" ;;
      d)  DONGLE_ID="$OPTARG" ;;
      s)  TUNER_SAMPLE_RATE="$OPTARG" ;;
+     z)  SONDE_TYPE="$OPTARG" ;;
      w)  WAV_INPUT=1 ;;
      \?) exit 1 ;;
      :)  echo "Option -$OPTARG requires an argument" >&2;exit 1 ;;
@@ -75,6 +77,10 @@ log_power()
 
 
 detect_sonde_type() {
+  [ -n "$SONDE_TYPE" ] && {
+    printf "$SONDE_TYPE: 0.99"
+    return
+  }
   # sonde type detection is done with the maximum signal bandwidth 9600 Hz if not specified
   local bpf=$(calc_bandpass_param 9600 $DEMODULATOR_OUTPUT_FREQ)
 
@@ -98,7 +104,7 @@ decode_sonde()
 
   local type=$(detect_sonde_type $bpf9)
 
-  case "${type% *}" in
+  case "${type%: *}" in
     RS41) decoder="$DECODERS_PATH/rs41mod --ptu --ecc --crc --json";bw=10 ;;
     RS92) decoder="$DECODERS_PATH/rs92mod --ptu --crc --ecc --json";bw=10 ;;
     DFM9) decoder="$DECODERS_PATH/dfm09mod --ptu --ecc --json";[ -n "${type#* }" -a "${type#* }" -lt 0 ] && decoder="$decoder -i";bw=10 ;;
@@ -108,6 +114,9 @@ decode_sonde()
        *) ;;
   esac
 
+  [ -n "$decoder" ] || {
+    printf "Decoder: $decoder is unknown\n" >/dev/stderr; return
+  }
   [ "${type% *}" = "RS92" ] && {
     # check if ephemeridis file exist and not older than EPHEM_MAX_AGE_SEC
     [ -s "$EPHEM_FILE" ] && [ "$(($(date +%s)-$(date -r $EPHEM_FILE +%s)))" -gt "$EPHEM_MAX_AGE_SEC" ] && \rm $EPHEM_FILE

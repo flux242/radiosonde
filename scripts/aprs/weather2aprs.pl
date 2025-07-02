@@ -73,7 +73,7 @@ while (<>) {
     defined $id or next;
 
     "pressure sensor" eq $model or "inFactory-TH" eq $model or next;
-    242 == $id or 158 == $id or next;
+    242 == $id or 236 == $id or next;
 
     if (242 == $id) {
       # pressure sensor

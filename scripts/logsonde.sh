@@ -24,6 +24,8 @@ while read LINE; do
   id=$(echo "$LINE" | jq -rc '.id|select(.!=null)')
   [ -n "$id" ] || continue # id is not found in json string
   # TODO:  add local filter for DXXXXXXXXX ids
+  [ "$id" = 'SC50xxxx' ] && continue
+  [ "$id" = 'Dxxxxxxxx' ] && continue
   [ -n "${active_logs[$id]}" ] || {
     log_file=$(find "$LOG_DIR" -iname '*'"$id"'*' -printf "%f\n")
     if [ -n "$log_file" ]; then

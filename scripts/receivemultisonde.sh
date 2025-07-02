@@ -227,6 +227,10 @@ scan_power_peaks()
           ++count;
         }
         else {
+          if ( count>=msw && ($(i+2)-sum)>thr ) {
+            ++count;
+            continue
+          }
           if(count>=msw) {
             idx+=(count/2);
             peak_freq=(tf-sr/2)+int(sr/sb*idx);

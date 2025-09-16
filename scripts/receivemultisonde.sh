@@ -227,9 +227,9 @@ scan_power_peaks()
           ++count;
         }
         else {
-          if ( count>=msw && ($(i+2)-sum)>thr ) {
+          if ( (count<msw) && ($(i+count/2)-sum)>thr ) {
             ++count;
-            continue
+            continue;
           }
           if(count>=msw) {
             idx+=(count/2);

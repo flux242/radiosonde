@@ -1516,8 +1516,18 @@ static int print_position(gpx_t *gpx, int ec) {  // GPS-Hoehe ueber Ellipsoid
                 if (gpx->jsn_freq > 0) {  // rs92-frequency: gpx->freq
                     int fq_kHz = gpx->jsn_freq;
                     //if (gpx->freq > 0) fq_kHz = gpx->freq; // L-band: option.ngp ?
-                    fprintf(stdout, ", \"freq\": %d", fq_kHz);
+                    fprintf(stdout, ", \"freq\": %d", fq_kHz );
                 }
+
+                // Include frequency derived from subframe information if available.
+                if (gpx->freq > 0) {
+                    fprintf(stdout, ", \"tx_frequency\": %d", gpx->freq );
+                }
+
+                // Reference time/position
+                fprintf(stdout, ", \"ref_datetime\": \"%s\"", "GPS" ); // {"GPS", "UTC"} GPS-UTC=leap_sec
+                fprintf(stdout, ", \"ref_position\": \"%s\"", "GPS" ); // {"GPS", "MSL"} GPS=ellipsoid , MSL=geoid
+
                 #ifdef VER_JSN_STR
                     ver_jsn = VER_JSN_STR;
                 #endif
@@ -1578,6 +1588,7 @@ int main(int argc, char *argv[]) {
     int option_iqdc = 0;
     int option_lp = 0;
     int option_dc = 0;
+    int option_noLUT = 0;
     int option_softin = 0;
     int option_pcmraw = 0;
     int sel_wavch = 0;     // audio channel: left
@@ -1742,7 +1753,8 @@ int main(int argc, char *argv[]) {
         }
         else if   (strcmp(*argv, "--spike") == 0) { spike = 1; }
         else if   (strcmp(*argv, "--ch2") == 0) { sel_wavch = 1; }  // right channel (default: 0=left)
-        else if   (strcmp(*argv, "--softin") == 0) { option_softin = 1; }  // float32 soft input
+        else if   (strcmp(*argv, "--softin") == 0)  { option_softin = 1; }  // float32 soft input
+        else if   (strcmp(*argv, "--softinv") == 0) { option_softin = 2; }  // float32 inverted soft input
         else if   (strcmp(*argv, "--ths") == 0) {
             ++argv;
             if (*argv) {
@@ -1773,16 +1785,18 @@ int main(int argc, char *argv[]) {
             dsp.xlt_fq = -fq; // S(t) -> S(t)*exp(-f*2pi*I*t)
             option_iq = 5;
         }
-        else if   (strcmp(*argv, "--lp") == 0) { option_lp = 1; }  // IQ lowpass
+        else if   (strcmp(*argv, "--lpIQ") == 0) { option_lp |= LP_IQ; }  // IQ/IF lowpass
         else if   (strcmp(*argv, "--lpbw") == 0) {  // IQ lowpass BW / kHz
-            float bw = 0.0;
+            double bw = 0.0;
             ++argv;
             if (*argv) bw = atof(*argv);
             else return -1;
-            if (bw > 4.6f && bw < 48.0f) set_lpIQbw = bw*1e3f;
-            option_lp = 1;
+            if (bw > 4.6 && bw < 48.0) set_lpIQbw = bw*1e3;
+            option_lp |= LP_IQ;
         }
+        else if   (strcmp(*argv, "--lpFM") == 0) { option_lp |= LP_FM; }  // FM lowpass
         else if   (strcmp(*argv, "--dc") == 0) { option_dc = 1; }
+        else if   (strcmp(*argv, "--noLUT") == 0) { option_noLUT = 1; }
         else if   (strcmp(*argv, "--min") == 0) {
             option_min = 1;
         }
@@ -1839,6 +1853,13 @@ int main(int argc, char *argv[]) {
         fclose(fp_eph);
         if (!option_der) gpx.gps.d_err = 1000;
     }
+
+    if (option_iq == 5 && option_dc) option_lp |= LP_FM;
+
+    // LUT faster for decM, however frequency correction after decimation
+    // LUT recommonded if decM > 2
+    //
+    if (option_noLUT && option_iq == 5) dsp.opt_nolut = 1; else dsp.opt_nolut = 0;
 
 
     gpx.option.crc = 1;
@@ -1965,7 +1986,7 @@ int main(int argc, char *argv[]) {
         {
             if (option_softin) {
                 for (k = 0; k < hdb.len; k++) hdb.sbuf[k] = 0.0;
-                header_found = find_softbinhead(fp, &hdb, &_mv);
+                header_found = find_softbinhead(fp, &hdb, &_mv, option_softin == 2);
             }
             else {
                 header_found = find_header(&dsp, thres, 3, bitofs, dsp.opt_dc);
@@ -1992,9 +2013,9 @@ int main(int argc, char *argv[]) {
                         float s1 = 0.0;
                         float s2 = 0.0;
                         float s = 0.0;
-                        bitQ = f32soft_read(fp, &s1);
+                        bitQ = f32soft_read(fp, &s1, option_softin == 2);
                         if (bitQ != EOF) {
-                            bitQ = f32soft_read(fp, &s2);
+                            bitQ = f32soft_read(fp, &s2, option_softin == 2);
                             if (bitQ != EOF) {
                                 s = s2-s1; // integrate both symbols  // only 2nd Manchester symbol: s2
                                 bit = (s>=0.0); // no soft decoding

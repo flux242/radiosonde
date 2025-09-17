@@ -56,9 +56,11 @@ typedef struct {
 
 
 #define BITS            (10)
-#define FRAME_LEN       (220)
+#define STDFRMLEN       (220)  // 108 byte
+#define FRAME_LEN       (220)  //(std=220, 108 byte) (full=440=2*std, 216 byte)
 #define BITFRAME_LEN    (FRAME_LEN*BITS)
-
+#define FRMBYTE_STD     (108)  //(FRAME_LEN-FRAMESTART)/2 = 108
+// FRAME_FULL = 2*FRAME_STD = 216 ?
 
 typedef struct {
     int out;
@@ -85,7 +87,7 @@ typedef struct {
 // shorter header correlation, such that, in mixed signal/noise,
 // signal samples have more weight: header = 0x00 0xAA 0x24 0x24
 // (in particular for soft bit input!)
-static char imet54_header[] = //"0000000001""0101010101""0000000001""0101010101"
+static char imet54_header[] = //"0000000001""0101010101""0000000001""0101010101"  // 20x 0x00AA
                               //"0000000001""0101010101""0000000001""0101010101"
                               //"0000000001""0101010101""0000000001""0101010101"
                               //"0000000001""0101010101""0000000001""0101010101"
@@ -224,6 +226,82 @@ static ui8_t hamming(int opt_ecc, ui8_t *cwb, ui8_t *sym) {
     return ret; // { 0, 1, 0xF0 }
 }
 
+static int crc32ok(ui8_t *bytes, int len) {
+    ui32_t poly0 = 0x0EDB;
+    ui32_t poly1 = 0x8260;
+    //[105 , 7, 0x8EDB, 0x8260] // CRC32 802-3 (Ethernet) reversed reciprocal
+    //[104 , 0, 0x48EB, 0x1ACA]
+    //[102 , 0, 0x1DB7, 0x04C1] // CRC32 802-3 (Ethernet) normal
+    int n = 104;
+    int b = 0;
+    ui32_t c0 = 0x48EB;
+    ui32_t c1 = 0x1ACA;
+    ui32_t nx_c0 = c0;
+    ui32_t nx_c1 = c1;
+
+    ui32_t data_c0 = (bytes[100]<<8) | bytes[101];
+    ui32_t data_c1 = (bytes[106]<<8) | bytes[107];
+
+    ui32_t crc0 = 0;
+    ui32_t crc1 = 0;
+
+    if (len < 108) return 0;  // FRMBYTE_STD=108
+
+    while (n >= 0) {
+
+        if (n < 100 || (n > 101 && n < 106)) {
+            if ((bytes[n]>>b) & 1) {
+                crc0 ^= c0;
+                crc1 ^= c1;
+            }
+        }
+
+        if (c1 & 0x8000) {
+            nx_c0 ^= poly0;
+            nx_c1 ^= poly1;
+        }
+        nx_c0 <<= 1;
+        nx_c1 <<= 1;
+        if ( c1     & 0x8000) nx_c0 |= 1;
+        if ((c1^c0) & 0x8000) nx_c1 |= 1;
+        nx_c0 &= 0xFFFF;
+        c0 = nx_c0;
+        c1 = nx_c1;
+
+        if (b < 7) b += 1;
+        else {
+            b = 0;
+            if (n % 4 == 3) n -= 7;
+            else            n += 1;
+        }
+    }
+
+    crc0 ^= data_c0^0x5000;
+    crc1 ^= data_c1^0x1DAD;
+
+    if (crc1 == 0 && (crc0 & 0xF000) == 0) return 1;
+    return 0;
+}
+
+static ui32_t crc32_802(ui8_t *msg, int len) {
+    ui32_t poly32 = 0x04C11DB7;  // CRC32 802-3 (Ethernet) normal
+    ui32_t rem = 0x0;            // xin: 0x77cde91a xout: 0x0
+    ui32_t out = 0x63D60875;     // xin: 0x0 xout: 0x63d60875
+    ui32_t crc = 0;
+    int i, j;
+    for (i = 0; i < len; i++) {
+        rem ^= (msg[i] << 24);
+        for (j = 0; j < 8; j++) {
+            if (rem & (1 << 31)) {
+                rem = (rem << 1) ^ poly32;
+            }
+            else {
+                rem <<= 1;
+            }
+        }
+    }
+    return rem ^ out;
+}
 
 /* ------------------------------------------------------------------------------------ */
 
@@ -261,6 +339,25 @@ static ui16_t u2be(ui8_t *bytes) {  // 16bit unsigned int
 #define pos_PTU_T     0x1C  // float32
 #define pos_PTU_RH    0x20  // float32
 #define pos_PTU_Trh   0x24  // float32 // ?
+//
+#define pos_STATUS    0x2A  // 2 byte
+#define pos_F8        0x52  // 1 byte
+#define pos_CNT11     0x5E  // 1 byte
+
+#define pos_CRC32CONT 0x34  // 4 byte
+
+
+static int crc32ok_cont(ui8_t *bytes) {
+    ui8_t m4[pos_CRC32CONT] = {0};
+    ui32_t crc32dat = u4be(bytes+pos_CRC32CONT);
+    ui32_t crc32val = 0;
+    int i, j;
+    for (i = 0; i < pos_CRC32CONT/4; i++) {
+        for (j = 0; j < 4; j++) m4[4*i+j] = bytes[4*i+3-j];
+    }
+    crc32val = crc32_802(m4, pos_CRC32CONT);
+    return crc32val == crc32dat;
+}
 
 
 static int get_SN(gpx_t *gpx) {
@@ -299,6 +396,12 @@ static int get_GPS(gpx_t *gpx) {
     val = i4be(gpx->frame+pos_GPSalt);
     gpx->alt = val / 1e1;
 
+    // plausibility checks
+    if (gpx->timems < 0.0 || gpx->timems > 235959999) return -1;
+    if (gpx->lat <  -90.0 || gpx->lat >  90.0) return -2;
+    if (gpx->lon < -180.0 || gpx->lon > 180.0) return -2;
+    if (gpx->alt < -400.0 || gpx->alt > 60000.0) return -2;
+
     return 0;
 }
 
@@ -322,11 +425,16 @@ static int get_PTU(gpx_t *gpx) {
     int val = 0;
     float *f = (float*)&val;
     float rh = -1.0f;
+    int count_1e9 = 0;
 
     // air temperature
     val = i4be(gpx->frame + pos_PTU_T);
     if (*f > -120.0f && *f < 80.0f)  gpx->T = *f;
     else gpx->T = -273.15f;
+    if (val == 0x4E6E6B28) {
+        gpx->T = -273.15f;
+        count_1e9 += 1;
+    }
 
     // raw RH?
     // water vapor saturation pressure (Hyland and Wexler)?
@@ -335,11 +443,19 @@ static int get_PTU(gpx_t *gpx) {
     if      (*f <   0.0f)  gpx->_RH =   0.0f;
     else if (*f > 100.0f)  gpx->_RH = 100.0f;
     else gpx->_RH = *f;
+    if (val == 0x4E6E6B28) {
+        gpx->_RH = -1.0f;
+        count_1e9 += 1;
+    }
 
     // temperatur of r.h. sensor?
     val = i4be(gpx->frame + pos_PTU_Trh);
     if (*f > -120.0f && *f < 80.0f)  gpx->Trh = *f;
     else gpx->Trh = -273.15f;
+    if (val == 0x4E6E6B28)  {
+        gpx->Trh = -273.15f;
+        count_1e9 += 1;
+    }
 
     // (Hyland and Wexler)
     if (gpx->T > -273.0f && gpx->Trh > -273.0f) {
@@ -352,7 +468,7 @@ static int get_PTU(gpx_t *gpx) {
     }
     gpx->RH = rh;
 
-    return 0;
+    return count_1e9;
 }
 
 static int reset_gpx(gpx_t *gpx) {
@@ -375,33 +491,47 @@ static int reset_gpx(gpx_t *gpx) {
 
 /* ------------------------------------------------------------------------------------ */
 
-static int print_position(gpx_t *gpx, int len, int ecc_frm, int ecc_gps) {
+static int print_position(gpx_t *gpx, int len, int ecc_frm, int ecc_tlm, int ecc_std) {
 
     int prnGPS = 0,
         prnPTU = 0,
         prnSTS = 0;
-    int frm_ok = 0;
+    int ptu1e9 = 0;
+    int tp_err = 0;
+    int frm_ok = 0,
+        crc_ok = 0,
+        std_ok = 0;
+    int rs_type = 54;
 
-    frm_ok = (ecc_frm >= 0  &&  len > pos_PTU_Trh+4);
+    crc_ok = crc32ok(gpx->frame, len);
+    frm_ok = (ecc_frm >= 0  &&  len > pos_F8);
 
     reset_gpx(gpx);
 
     if (len > pos_GPSalt+4)
     {
         get_SN(gpx);
-        get_GPS(gpx);
-        prnGPS = 1;
+        tp_err = get_GPS(gpx);
+        if (tp_err == 0) prnGPS = 1;
+        else frm_ok = 0;
     }
     if (len > pos_PTU_Trh+4)
     {
-        get_PTU(gpx);
+        ptu1e9 = get_PTU(gpx);
         prnPTU = 1;
     }
-    if (len > 42+2) {
-        gpx->status = u2be(gpx->frame + 42);
+    if (len > pos_STATUS+2) {
+        gpx->status = u2be(gpx->frame + pos_STATUS);
         prnSTS = 1;
     }
-
+    if (frm_ok) {
+        int pos;
+        int sum = 0;
+        for (pos = pos_STATUS+2; pos < pos_F8; pos++) {
+            sum += gpx->frame[pos];
+        }
+        if (sum == 0 && (gpx->status&0xF0F)==0 && ptu1e9 == 3) rs_type = 50;
+    }
 
     if ( prnGPS && !gpx->option.slt )
     {
@@ -422,7 +552,19 @@ static int print_position(gpx_t *gpx, int len, int ecc_frm, int ecc_gps) {
             if (gpx->RH > -0.5f)   fprintf(stdout, " RH=%.0f%% ", gpx->RH);
         }
 
-        // (GPS) status: 003E
+        if ( crc_ok ) fprintf(stdout, " [OK]");  // std frame: frame[104..105]==0x4000 ?
+        else {                                   // continuous frame: pos_F8_full==pos_F8_std+11 ?
+            crc_ok = crc32ok_cont(gpx->frame);
+            if ( crc_ok ) fprintf(stdout, " [ok]");
+            else if ( ecc_std == 0 ) {
+                fprintf(stdout, " [oo]");
+                std_ok = 1;
+            }
+            else if (gpx->frame[pos_F8] == 0xF8) fprintf(stdout, " [NO]");
+            else fprintf(stdout, " [no]");
+        }
+
+        // (imet54:GPS+PTU) status: 003E , (imet50:GPS); 0030
         if (gpx->option.vbs && prnSTS) {
             fprintf(stdout, "  [%04X] ", gpx->status);
         }
@@ -430,19 +572,20 @@ static int print_position(gpx_t *gpx, int len, int ecc_frm, int ecc_gps) {
         // error correction
         if (gpx->option.ecc && ecc_frm != 0) {
             fprintf(stdout, " #  (%d)", ecc_frm);
-            if (gpx->option.vbs) fprintf(stdout, " [%d]", ecc_gps);
+            if (gpx->option.vbs) fprintf(stdout, " [%d]", ecc_tlm);
         }
 
         fprintf(stdout, "\n");
     }
 
     // prnGPS,prnTPU
-    if (gpx->option.jsn && frm_ok && (gpx->status&0x30)==0x30) {
+    if (gpx->option.jsn && frm_ok && (crc_ok || std_ok) && (gpx->status&0x30)==0x30) {
         char *ver_jsn = NULL;
+        char *subtype = (rs_type == 54) ? "IMET54" : "IMET50";
         unsigned long count_day = (unsigned long)(gpx->std*3600 + gpx->min*60 + gpx->sek+0.5);  // (gpx->timems/1e3+0.5) has gaps
         fprintf(stdout, "{ \"type\": \"%s\"", "IMET5");
         fprintf(stdout, ", \"frame\": %lu", count_day);
-        fprintf(stdout, ", \"id\": \"IMET54-%u\", \"datetime\": \"%02d:%02d:%06.3fZ\", \"lat\": %.5f, \"lon\": %.5f, \"alt\": %.5f",
+        fprintf(stdout, ", \"id\": \"IMET5-%u\", \"datetime\": \"%02d:%02d:%06.3fZ\", \"lat\": %.5f, \"lon\": %.5f, \"alt\": %.5f",
                 gpx->SNu32, gpx->std, gpx->min, gpx->sek, gpx->lat, gpx->lon, gpx->alt);
         if (gpx->option.ptu) {
             if (gpx->T > -273.0f) {
@@ -452,10 +595,15 @@ static int print_position(gpx_t *gpx, int len, int ecc_frm, int ecc_gps) {
                 fprintf(stdout, ", \"humidity\": %.1f",  gpx->RH );
             }
         }
-        //fprintf(stdout, ", \"subtype\": \"%s\"", "IMET54");
+        fprintf(stdout, ", \"subtype\": \"%s\"", subtype);  // "IMET54"/"IMET50"
         if (gpx->jsn_freq > 0) {
-            fprintf(stdout, ", \"freq\": %d", gpx->jsn_freq);
+            fprintf(stdout, ", \"freq\": %d", gpx->jsn_freq );
         }
+
+        // Reference time/position
+        fprintf(stdout, ", \"ref_datetime\": \"%s\"", "UTC" ); // {"GPS", "UTC"} GPS-UTC=leap_sec
+        fprintf(stdout, ", \"ref_position\": \"%s\"", "MSL" ); // {"GPS", "MSL"} GPS=ellipsoid , MSL=geoid
+
         #ifdef VER_JSN_STR
             ver_jsn = VER_JSN_STR;
         #endif
@@ -469,7 +617,8 @@ static int print_position(gpx_t *gpx, int len, int ecc_frm, int ecc_gps) {
 
 static void print_frame(gpx_t *gpx, int len, int b2B) {
     int i, j;
-    int ecc_frm = 0, ecc_gps = 0;
+    int ecc_frm = 0, ecc_gps = 0, ecc_std = 0;
+    int ecc_tlm = 0;
     ui8_t bits8n1[BITFRAME_LEN+10]; // (RAW)BITFRAME_LEN
     ui8_t bits[BITFRAME_LEN]; // 8/10 (RAW)BITFRAME_LEN
     ui8_t nib[FRAME_LEN];
@@ -497,12 +646,17 @@ static void print_frame(gpx_t *gpx, int len, int b2B) {
 
         ecc_frm = 0;
         ecc_gps = 0;
-        for (j = 0; j < len/8; j++) { // alt. only GPS block
+        ecc_tlm = 0;
+        ecc_std = 0;
+        for (j = 0; j < 2*pos_CRC32CONT; j++) { // alt. only GPS block  // len/8
             ecc_frm += ec[j];
             if (ec[j] > 0x10) ecc_frm = -1;
-            if (j < pos_GPSalt+4+8) ecc_gps = ecc_frm;
+            if (j < 2*(pos_GPSalt+4)) ecc_gps = ecc_frm;
+            if (j < 2*(pos_STATUS+2)) ecc_tlm = ecc_frm;
+            if (j < 2*pos_CRC32CONT)  ecc_std = ecc_frm;  // pos_STATUS < pos_CRC32CONT < FRMBYTE_STD
             if (ecc_frm < 0) break;
         }
+        if (j < 2*pos_CRC32CONT) ecc_std = -1;
     }
     else {
         ecc_frm = -2; // TODO: parse ecc-info from raw file
@@ -511,6 +665,8 @@ static void print_frame(gpx_t *gpx, int len, int b2B) {
 
     if (gpx->option.raw)
     {
+        int crc_ok = crc32ok(gpx->frame, len/16);
+
         for (i = 0; i < len/16; i++) {
             fprintf(stdout, "%02X", gpx->frame[i]);
             if (gpx->option.raw > 1)
@@ -519,19 +675,33 @@ static void print_frame(gpx_t *gpx, int len, int b2B) {
                 if (gpx->option.raw == 4 && i % 4 == 3) fprintf(stdout, " ");
             }
         }
+
+        if ( crc_ok ) fprintf(stdout, " [OK]");  // std frame: frame[104..105]==0x4000 ?
+        else {                                   // continuous frame: pos_F8_full==pos_F8_std+11 ?
+            crc_ok = crc32ok_cont(gpx->frame);
+            if ( crc_ok ) fprintf(stdout, " [ok]");
+            else if ( ecc_std == 0 ) {
+                fprintf(stdout, " [oo]");
+            }
+            else if (gpx->frame[pos_F8] == 0xF8) fprintf(stdout, " [NO]");
+            else fprintf(stdout, " [no]");
+        }
+        // [ok] # (-1):
+        // CRC32 more reliable than CRC16
+        // ecc_frm=-1 => errors in parity only ?  (JSON output only if crc_ok and ecc_frm >= 0)
         if (gpx->option.ecc && ecc_frm != 0) {
             fprintf(stdout, " # (%d)", ecc_frm);
-            fprintf(stdout, " [%d]", ecc_gps);
+            fprintf(stdout, " [%d]", ecc_tlm);
         }
         fprintf(stdout, "\n");
 
         if (gpx->option.slt /*&& gpx->option.jsn*/) {
-            print_position(gpx, len/16, ecc_frm, ecc_gps);
+            print_position(gpx, len/16, ecc_frm, ecc_tlm, ecc_std);
         }
     }
     else
     {
-        print_position(gpx, len/16, ecc_frm, ecc_gps);
+        print_position(gpx, len/16, ecc_frm, ecc_tlm, ecc_std);
     }
 }
 
@@ -546,6 +716,7 @@ int main(int argc, char *argv[]) {
     int option_iqdc = 0;
     int option_lp = 0;
     int option_dc = 0;
+    int option_noLUT = 0;
     int option_softin = 0;
     int option_pcmraw = 0;
     int wavloaded = 0;
@@ -623,7 +794,8 @@ int main(int argc, char *argv[]) {
         else if   (strcmp(*argv, "--silent") == 0) { gpx.option.slt = 1; }
         else if   (strcmp(*argv, "--ch2") == 0) { sel_wavch = 1; }  // right channel (default: 0=left)
         else if   (strcmp(*argv, "--auto") == 0) { gpx.option.aut = 1; }
-        else if   (strcmp(*argv, "--softin") == 0) { option_softin = 1; }  // float32 soft input
+        else if   (strcmp(*argv, "--softin") == 0)  { option_softin = 1; }  // float32 soft input
+        else if   (strcmp(*argv, "--softinv") == 0) { option_softin = 2; }  // float32 inverted soft input
         else if   (strcmp(*argv, "--ths") == 0) {
             ++argv;
             if (*argv) {
@@ -662,16 +834,18 @@ int main(int argc, char *argv[]) {
             dsp.xlt_fq = -fq; // S(t) -> S(t)*exp(-f*2pi*I*t)
             option_iq = 5;
         }
-        else if   (strcmp(*argv, "--lp") == 0) { option_lp = 1; }  // IQ lowpass
+        else if   (strcmp(*argv, "--lpIQ") == 0) { option_lp |= LP_IQ; }  // IQ/IF lowpass
         else if   (strcmp(*argv, "--lpbw") == 0) {  // IQ lowpass BW / kHz
             double bw = 0.0;
             ++argv;
             if (*argv) bw = atof(*argv);
             else return -1;
             if (bw > 4.6 && bw < 24.0) lpIQ_bw = bw*1e3;
-            option_lp = 1;
+            option_lp |= LP_IQ;
         }
+        else if   (strcmp(*argv, "--lpFM") == 0) { option_lp |= LP_FM; }  // FM lowpass
         else if   (strcmp(*argv, "--dc") == 0) { option_dc = 1; }
+        else if   (strcmp(*argv, "--noLUT") == 0) { option_noLUT = 1; }
         else if   (strcmp(*argv, "--min") == 0) {
             option_min = 1;
         }
@@ -714,6 +888,13 @@ int main(int argc, char *argv[]) {
         ++argv;
     }
     if (!wavloaded) fp = stdin;
+
+    if (option_iq == 5 && option_dc) option_lp |= LP_FM;
+
+    // LUT faster for decM, however frequency correction after decimation
+    // LUT recommonded if decM > 2
+    //
+    if (option_noLUT && option_iq == 5) dsp.opt_nolut = 1; else dsp.opt_nolut = 0;
 
 
     if (gpx.option.raw && gpx.option.jsn) gpx.option.slt = 1;
@@ -826,7 +1007,7 @@ int main(int argc, char *argv[]) {
         while ( 1 )
         {
             if (option_softin) {
-                header_found = find_softbinhead(fp, &hdb, &_mv);
+                header_found = find_softbinhead(fp, &hdb, &_mv, option_softin == 2);
             }
             else {                                                              // FM-audio:
                 header_found = find_header(&dsp, thres, 4, bitofs, dsp.opt_dc); // optional 2nd pass: dc=0
@@ -849,7 +1030,7 @@ int main(int argc, char *argv[]) {
                 {
                     if (option_softin) {
                         float s = 0.0;
-                        bitQ = f32soft_read(fp, &s);
+                        bitQ = f32soft_read(fp, &s, option_softin == 2);
                         if (bitQ != EOF) {
                             bit = (s>=0.0);
                             hsbit.hb = bit;
@@ -885,7 +1066,7 @@ int main(int argc, char *argv[]) {
                 while ( 0 && bitpos < 4*BITFRAME_LEN/3 ) {
                     if (option_softin) {
                         float s = 0.0;
-                        bitQ = f32soft_read(fp, &s);
+                        bitQ = f32soft_read(fp, &s, option_softin == 2);
                     }
                     else {
                         bitQ = read_slbit(&dsp, &bit, 0, bitofs, bitpos, -1, 0); // symlen=1

@@ -10,8 +10,10 @@ ${CC} ${CCFLAGS} -c bch_ecc_mod.c
 ${CC} ${CCFLAGS} rs41mod.c demod_mod.o bch_ecc_mod.o -lm -o rs41mod
 ${CC} ${CCFLAGS} dfm09mod.c demod_mod.o -lm -o dfm09mod
 ${CC} ${CCFLAGS} m10mod.c demod_mod.o -lm -o m10mod
-${CC} ${CCFLAGS} lms6mod.c demod_mod.o bch_ecc_mod.o -lm -o lms6mod
+${CC} ${CCFLAGS} lms6Xmod.c demod_mod.o bch_ecc_mod.o -lm -o lms6Xmod
 ${CC} ${CCFLAGS} rs92mod.c demod_mod.o bch_ecc_mod.o -lm -o rs92mod #` (needs `RS/rs92/nav_gps_vel.c`)
 ${CC} ${CCFLAGS} c50dft.c -lm -o c50dft
 ${CC} ${CCFLAGS} c34dft.c -lm -o c34dft
 ${CC} ${CCFLAGS} dft_detect.c -lm -o dft_detect
+${CC} ${CCFLAGS} mts01mod.c demod_mod.o -lm -o mts01mod
+${CC} ${CCFLAGS} mp3h1mod.c demod_mod.o -lm -o mp3h1mod

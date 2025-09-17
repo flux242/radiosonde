@@ -32,7 +32,9 @@ static int option_verbose = 0,  // ausfuehrliche Anzeige
            option_dc = 0,
            option_silent = 0,
            option_cont = 0,
+           option_d2 = 0,
            option_pcmraw = 0,
+           option_singleLpIQ = 0,
            wavloaded = 0;
 static int wav_channel = 0;     // audio channel: left
 
@@ -48,6 +50,10 @@ static char rs92_header[] = //"10100110011001101001"
                             "10100110011001101001"
                             "10100110011001101001"
                             "1010011001100110100110101010100110101001";
+static char rd94rd41_header[] = "10100110010110101001"   // 0x1A = 0 01011000 1
+                                "10010101011010010101"   // 0xCF = 0 11110011 1
+                                "10101001010101010101"   // 0xFC = 0 00111111 1
+                                "10011001010110101001";  // 0x1D = 0 10111000 1
 
 //int  lms_sps = 4800;  // lms6_403MHz
 static char lms6_header[] = "0101011000001000""0001110010010111"
@@ -62,6 +68,7 @@ static char m10_header[] = //"10011001100110010100110010011001";
 // frame byte[0..1]: byte[0]=framelen-1, byte[1]=type(8F=M2K2,9F=M10,AF=M10+,20=M20)
 // M2K2   : 64 8F : 01100100 10001111
 // M10    : 64 9F : 01100100 10011111  (framelen 0x64+1) (baud=9616)
+// M10    : 66 9F : 01100110 10011111  (framelen 0x66+1) (baud=9600) (2025)
 // M10-aux: 76 9F : 01110110 10011111  (framelen 0x76+1)
 // M10+   : 64 AF : 01100100 10101111  (w/ gtop-GPS)
 // M20    : 45 20 : 01000101 00100000  (framelen 0x45+1) (baud=9600)
@@ -74,6 +81,13 @@ static char mrz_header[] = "1001100110011001""1001101010101010"; // 0xAA 0xBF
 
 //int  imet54_sps = 4800;
 static char imet54_header[] = "0000000001""0101010101""0001001001""0001001001"; // 0x00 0xAA 0x24 0x24
+
+// Meteosis MTS01 1200 baud
+// Lmax
+// len(AA AA B4 2B)=32 -> L=1280 // more accurate, +19% slower
+// len(AA B4 2B)=24 -> L=960 // same L as meisei, +7% slower
+static char mts01_header[] = "10101010""10101010"  // preamble: AA AA
+                             "10110100""00101011"; // 10000000: B4 2B //80
 
 
 // imet_9600 / 1200 Hz;
@@ -99,8 +113,17 @@ static char imet1rs_header[] =
 
 // C34/C50: 2400 baud, 1:2900Hz/0:4800Hz
 static char c34_preheader[] =
-"01010101010101010101010101010101";   // 2900 Hz tone
-// dft, dB-max(1000Hz..5000Hz) = 2900Hz ?
+    "01010101010101010101010101010101";   // 2900 Hz tone
+    // dft, dB-max(1000Hz..5000Hz) = 2900Hz ?
+
+
+static char weathex_header[] =
+    "10101010""10101010""10101010"       // AA AA AA (preamble)
+    "00101101""11010100"; //"10101010";  // 2D D4 55/AA
+
+static char wxr2pn9_header[] =
+    "10101010""10101010""10101010"  // AA AA AA (preamble)
+    "11000001""10010100"; //"11000001";  // C1 94 C1
 
 
 typedef struct {
@@ -121,46 +144,78 @@ typedef struct {
     float df; // Df = df*sr_base;
 } rsheader_t;
 
-static float lpFM_bw[2] = {  4e3, 10e3 };  // FM-audio lowpass bandwidth
-static float lpIQ_bw[3] = { 12e3, 22e3, 200e3 };  // IF iq lowpass bandwidth
+#define N_bwIQ 4
+static float lpFM_bw[2] = { 4e3, 10e3 };  // FM-audio lowpass bandwidth
+static float lpIQ_bw[N_bwIQ] = { 6e3, 12e3, 22e3, 200e3 };  // IF iq lowpass bandwidth
 static float set_lpIQ = 0.0;
 
-#define tn_DFM      2
-#define tn_RS41     3
-#define tn_RS92     4
-#define tn_M10      5
-#define tn_M20      6
-#define tn_LMS6     8
-#define tn_MEISEI   9
-#define tn_MRZ     12
-#define tn_C34C50  15
-#define tn_MK2LMS  18
-#define tn_IMET5   24
-#define tn_IMETa   25
-#define tn_IMET4   26
-#define tn_IMET1rs 28
-#define tn_IMET1ab 29
+#define tn_DFM        2
+#define tn_RS41       3
+#define tn_RS92       4
+#define tn_M10        5
+#define tn_M20        6
+#define tn_LMS6       8
+#define tn_MEISEI     9
+#define tn_RD94RD41  10
+#define tn_MRZ       12
+#define tn_MTS01     13
+#define tn_C34C50    15
+#define tn_WXR301    16
+#define tn_WXRpn9    17
+#define tn_MK2LMS    18
+#define tn_IMET5     24
+#define tn_IMETa     25
+#define tn_IMET4     26
+#define tn_IMET1rs   28
+#define tn_IMET1ab   29
 
-#define Nrs         14
-#define idxIMETafsk 11
-#define idxRS       12
-#define idxI4       13
+#define idxIMETafsk  15
+#define idxRS        16
+#define idxI4        17
+#define Nrs          18
 static rsheader_t rs_hdr[Nrs] = {
-    { 2500, 0, 0, dfm_header,     1.0, 0.0, 0.65, 2, NULL, "DFM9",     tn_DFM,     0, 0, 0.0, 0.0}, // DFM6: -2 ?
-    { 4800, 0, 0, rs41_header,    0.5, 0.0, 0.70, 2, NULL, "RS41",     tn_RS41,    0, 0, 0.0, 0.0},
-    { 4800, 0, 0, rs92_header,    0.5, 0.0, 0.70, 3, NULL, "RS92",     tn_RS92,    0, 0, 0.0, 0.0}, // RS92NGP: 1680/400=4.2
-    { 4800, 0, 0, lms6_header,    1.0, 0.0, 0.60, 8, NULL, "LMS6",     tn_LMS6,    0, 0, 0.0, 0.0}, // lmsX: 7?
-    { 4800, 0, 0, imet54_header,  0.5, 0.0, 0.80, 2, NULL, "IMET5",    tn_IMET5,   0, 0, 0.0, 0.0}, // (rs_hdr[idxI5])
-    { 9616, 0, 0, mk2a_header,    1.0, 0.0, 0.70, 2, NULL, "MK2LMS",   tn_MK2LMS,  1, 2, 0.0, 0.0}, // Mk2a/LMS6-1680 , --IQ: decimate > 170kHz ...
-    { 9608, 0, 0, m10_header,     1.0, 0.0, 0.76, 2, NULL, "M10",      tn_M10,     1, 1, 0.0, 0.0}, // M10.tn=5 (baud=9616) , M20.tn=6 (baud=9600)
-    { 2400, 0, 0, meisei_header,  1.0, 0.0, 0.70, 2, NULL, "MEISEI",   tn_MEISEI,  0, 1, 0.0, 0.0},
-    { 2400, 0, 0, mrz_header,     1.5, 0.0, 0.80, 2, NULL, "MRZ",      tn_MRZ,     0, 0, 0.0, 0.0},
-    { 5800, 0, 0, c34_preheader,  1.5, 0.0, 0.80, 2, NULL, "C34C50",   tn_C34C50,  0, 1, 0.0, 0.0}, // C34/C50 2900 Hz tone
-    { 9600, 0, 0, imet1ab_header, 1.0, 0.0, 0.80, 2, NULL, "IMET1AB",  tn_IMET1ab, 1, 2, 0.0, 0.0}, // (rs_hdr[idxAB])
-    { 9600, 0, 0, imet_preamble,  0.5, 0.0, 0.80, 4, NULL, "IMETafsk", tn_IMETa  , 1, 0, 0.0, 0.0}, // IMET1AB, IMET1RS (IQ)IMET4
-    { 9600, 0, 0, imet1rs_header, 0.5, 0.0, 0.80, 2, NULL, "IMET1RS",  tn_IMET1rs, 0, 2, 0.0, 0.0}, // (rs_hdr[idxRS]) IMET4: lpIQ=0 ...
-    { 9600, 0, 0, imet1rs_header, 0.5, 0.0, 0.80, 2, NULL, "IMET4",    tn_IMET4,   1, 0, 0.0, 0.0}, // (rs_hdr[idxI4])
+    { 2500, 0, 0, dfm_header,      1.0, 0.0, 0.65, 2, NULL, "DFM9",     tn_DFM,      0, 1, 0.0, 0.0}, // DFM6: -2 ?
+    { 4800, 0, 0, rs41_header,     0.5, 0.0, 0.70, 2, NULL, "RS41",     tn_RS41,     0, 1, 0.0, 0.0},
+    { 4800, 0, 0, rs92_header,     0.5, 0.0, 0.70, 3, NULL, "RS92",     tn_RS92,     0, 1, 0.0, 0.0}, // RS92NGP: 1680/400=4.2
+    { 4800, 0, 0, lms6_header,     1.0, 0.0, 0.60, 8, NULL, "LMS6",     tn_LMS6,     0, 1, 0.0, 0.0}, // lmsX: 7?
+    { 4800, 0, 0, imet54_header,   0.5, 0.0, 0.80, 2, NULL, "IMET5",    tn_IMET5,    0, 1, 0.0, 0.0}, // (rs_hdr[idxI5])
+    { 9616, 0, 0, mk2a_header,     1.0, 0.0, 0.70, 2, NULL, "MK2LMS",   tn_MK2LMS,   1, 2, 0.0, 0.0}, // Mk2a/LMS6-1680 , --IQ: decimate > 170kHz ...
+    { 9608, 0, 0, m10_header,      1.0, 0.0, 0.76, 2, NULL, "M10",      tn_M10,      1, 2, 0.0, 0.0}, // M10.tn=5 (baud=9616) , M20.tn=6 (baud=9600)
+    { 2400, 0, 0, meisei_header,   1.0, 0.0, 0.70, 2, NULL, "MEISEI",   tn_MEISEI,   0, 2, 0.0, 0.0},
+    { 4800, 0, 0, rd94rd41_header, 1.0, 0.0, 0.70, 2, NULL, "RD94RD41", tn_RD94RD41, 0, 1, 0.0, 0.0}, // Dropsonde RD94/RD41
+    { 2400, 0, 0, mrz_header,      1.5, 0.0, 0.80, 2, NULL, "MRZ",      tn_MRZ,      0, 1, 0.0, 0.0},
+    { 1200, 0, 0, mts01_header,    1.0, 0.0, 0.65, 2, NULL, "MTS01",    tn_MTS01,    0, 0, 0.0, 0.0},
+    { 5800, 0, 0, c34_preheader,   1.5, 0.0, 0.80, 2, NULL, "C34C50",   tn_C34C50,   0, 2, 0.0, 0.0}, // C34/C50 2900 Hz tone
+    { 4800, 0, 0, weathex_header,  1.0, 0.0, 0.65, 2, NULL, "WXR301",   tn_WXR301,   0, 3, 0.0, 0.0},
+    { 5000, 0, 0, wxr2pn9_header,  1.0, 0.0, 0.65, 2, NULL, "WXRPN9",   tn_WXRpn9,   0, 3, 0.0, 0.0},
+    { 9600, 0, 0, imet1ab_header,  1.0, 0.0, 0.80, 2, NULL, "IMET1AB",  tn_IMET1ab,  1, 3, 0.0, 0.0}, // (rs_hdr[idxAB])
+    { 9600, 0, 0, imet_preamble,   0.5, 0.0, 0.80, 4, NULL, "IMETafsk", tn_IMETa  ,  1, 1, 0.0, 0.0}, // IMET1AB, IMET1RS (IQ)IMET4
+    { 9600, 0, 0, imet1rs_header,  0.5, 0.0, 0.80, 2, NULL, "IMET1RS",  tn_IMET1rs,  0, 3, 0.0, 0.0}, // (rs_hdr[idxRS]) IMET4: lpIQ=0 ...
+    { 9600, 0, 0, imet1rs_header,  0.5, 0.0, 0.80, 2, NULL, "IMET4",    tn_IMET4,    1, 1, 0.0, 0.0}, // (rs_hdr[idxI4])
 };
+
+static int idx_MTS01 = -1,
+           idx_C34C50 = -1,
+           idx_WXR301 = -1,
+           idx_WXRPN9 = -1,
+           idx_IMET1AB = -1;
+
+
+static int rs_detect2[Nrs];
+
+static int rs_d2() {
+    int tn = 0;
+    for (tn = 0; tn < Nrs; tn++) {
+        if ( rs_detect2[tn] > 1 ) break;
+    }
+    return tn;
+}
+
+static int reset_d2() {
+    int n = 0;
+    for (n = 0; n < Nrs; n++) rs_detect2[n] = 0;
+    return 0;
+}
 
 
 /*
@@ -196,7 +251,7 @@ static ui32_t sample_in, sample_out, delay;
 
 static int M;
 
-static float *buf_fm[3];
+static float *buf_fm[N_bwIQ];
 static float *bufs = NULL;
 
 static char *rawbits = NULL;
@@ -206,12 +261,13 @@ static char *rawbits = NULL;
 // decimation
 static ui32_t dsp__sr_base;
 static ui32_t dsp__dectaps;
-static ui32_t dsp__sample_dec;
+static ui32_t dsp__sample_decX;
 static int dsp__decM = 1;
 static float complex *dsp__decXbuffer;
 static float complex *dsp__decMbuf;
 static float complex *dsp__ex; // exp_lut
 static ui32_t dsp__lut_len;
+static ui32_t dsp__sample_decM;
 
 static float *ws_dec;
 static double dsp__xlt_fq = 0.0;
@@ -231,7 +287,7 @@ static int dsp__lpFMtaps; // ui32_t
 static float complex *Y;
 static float complex *WS[2];
 // IF: lowpass
-static float *ws_lpIQ[2];
+static float *ws_lpIQ[N_bwIQ]; // only N_bwIQ-1 used
 static int dsp__lpIQtaps; // ui32_t
 static float complex *lpIQ_buf;
 
@@ -645,29 +701,47 @@ static float complex lowpass0(float complex buffer[], ui32_t sample, ui32_t taps
     ui32_t n;
     double complex w = 0;
     for (n = 0; n < taps; n++) {
-        w += buffer[(sample+n+1)%taps]*ws[taps-1-n];
+        w += buffer[(sample+n)%taps]*ws[taps-1-n];
     }
     return (float complex)w;
 }
+//static __attribute__((optimize("-ffast-math"))) float complex lowpass()
 static float complex lowpass(float complex buffer[], ui32_t sample, ui32_t taps, float *ws) {
-    ui32_t n;
-    ui32_t s = sample % taps;
-    double complex w = 0;
+    float complex w = 0;
+    int n; // -Ofast
+    int S = taps - (sample % taps);
     for (n = 0; n < taps; n++) {
-        w += buffer[n]*ws[taps+s-n]; // ws[taps+s-n] = ws[(taps+sample-n)%taps]
+        w += buffer[n]*ws[S+n]; // ws[taps+s-n] = ws[(taps+sample-n)%taps]
     }
-    return (float complex)w;
+    return w;
+// symmetry: ws[n] == ws[taps-1-n]
+}
+static float complex lowpass2(float complex buffer[], ui32_t sample, ui32_t taps, float *ws) {
+    float complex w = 0;
+    int n;
+    int s = sample % taps;
+    int S1 = s;
+    int S1N = S1-taps;
+    int n0 = taps-s;
+    for (n = 0; n < n0; n++) {
+        w += buffer[S1+n]*ws[n];
+    }
+    for (n = n0; n < taps; n++) {
+        w += buffer[S1N+n]*ws[n];
+    }
+    return w;
 // symmetry: ws[n] == ws[taps-1-n]
 }
 
 
 static int f32buf_sample(FILE *fp, int inv) {
     float _s = 0.0;
-    float s[3];
+    float s[N_bwIQ];
     static float complex z0_fm0;
     static float complex z0_fm1;
+    static float complex z0_fm2;
     static float complex z0;
-    float complex z_fm0=0, z_fm1=0;
+    float complex z_fm0=0, z_fm1=0, z_fm2=0;
     float complex z, w;
     double gain = FM_GAIN;
     int i;
@@ -675,47 +749,63 @@ static int f32buf_sample(FILE *fp, int inv) {
     if (option_iq)
     {
         if (option_iq == 5) { // baseband decimation
-            ui32_t s_reset = dsp__dectaps*dsp__lut_len;
+            //ui32_t s_reset = dsp__dectaps*dsp__lut_len;
             int j;
             if ( f32read_cblock(fp) < dsp__decM ) return EOF;
             for (j = 0; j < dsp__decM; j++) {
-                dsp__decXbuffer[dsp__sample_dec % dsp__dectaps] = dsp__decMbuf[j] * dsp__ex[dsp__sample_dec % dsp__lut_len];
-                dsp__sample_dec += 1;
-                if (dsp__sample_dec == s_reset) dsp__sample_dec = 0;
+                dsp__decXbuffer[dsp__sample_decX] = dsp__decMbuf[j] * dsp__ex[dsp__sample_decM];
+                dsp__sample_decM += 1; if (dsp__sample_decM >= dsp__lut_len) dsp__sample_decM = 0;
+                dsp__sample_decX += 1; if (dsp__sample_decX >= dsp__dectaps) dsp__sample_decX = 0;
             }
-            z = lowpass(dsp__decXbuffer, dsp__sample_dec, dsp__dectaps, ws_dec);
+            z = lowpass(dsp__decXbuffer, dsp__sample_decX, dsp__dectaps, ws_dec);
 
         }
         else if ( f32read_csample(fp, &z) == EOF ) return EOF;
 
         // IF-lowpass
         // a) detect signal bandwidth/center-fq (not reliable), or
-        // b) 3 FM-streams
+        // b) N_bwIQ FM-streams
         //
         lpIQ_buf[sample_in % dsp__lpIQtaps] = z;
-        z_fm0 = lowpass(lpIQ_buf, sample_in, dsp__lpIQtaps, ws_lpIQ[0]);
-        z_fm1 = lowpass(lpIQ_buf, sample_in, dsp__lpIQtaps, ws_lpIQ[1]);
-
+        z_fm0 = lowpass(lpIQ_buf, sample_in+1, dsp__lpIQtaps, ws_lpIQ[0]);
+        if (option_singleLpIQ) {
+            z_fm1 = z_fm0;
+            z_fm2 = z_fm0;
+        }
+        else {
+            z_fm1 = lowpass(lpIQ_buf, sample_in+1, dsp__lpIQtaps, ws_lpIQ[1]);
+            z_fm2 = lowpass(lpIQ_buf, sample_in+1, dsp__lpIQtaps, ws_lpIQ[2]);
+        }
         // IQ: different modulation indices h=h(rs) -> FM-demod
         w = z_fm0 * conj(z0_fm0);
         s[0] = gain * carg(w)/M_PI;
         z0_fm0 = z_fm0;
 
-        w = z_fm1 * conj(z0_fm1);
-        s[1] = gain * carg(w)/M_PI;
-        z0_fm1 = z_fm1;
+        if (option_singleLpIQ) {
+            s[1] = s[0]; z0_fm1 = z_fm1;
+            s[2] = s[0]; z0_fm2 = z_fm2;
+        }
+        else {
+            w = z_fm1 * conj(z0_fm1);
+            s[1] = gain * carg(w)/M_PI;
+            z0_fm1 = z_fm1;
+
+            w = z_fm2 * conj(z0_fm2);
+            s[2] = gain * carg(w)/M_PI;
+            z0_fm2 = z_fm2;
+        }
 
         w = z * conj(z0);
-        s[2] = gain * carg(w)/M_PI;
+        s[3] = gain * carg(w)/M_PI;
         z0 = z;
     }
     else
     {
         if (f32read_sample(fp, &_s) == EOF) return EOF;
-        for (i = 0; i < 3; i++) s[i] = _s;
+        for (i = 0; i < N_bwIQ; i++) s[i] = _s;
     }
 
-    for (i = 0; i < 3; i++) {
+    for (i = 0; i < N_bwIQ; i++) {
         if (inv) s[i]= -s[i];
         buf_fm[i][sample_in % M] = s[i];
     }
@@ -935,8 +1025,11 @@ static int init_buffers() {
         float f_lp; // dec_lowpass: lowpass_bw/2
         float t_bw; // dec_lowpass: transition_bw
         int taps; // dec_lowpass: taps
+        int wideIF = 0;
 
         if (set_lpIQ > IF_sr) IF_sr = set_lpIQ;
+
+        wideIF = IF_sr > 60e3;
 
         sr_base = sample_rate;
 
@@ -947,8 +1040,13 @@ static int init_buffers() {
             decM = sr_base / IF_sr;
         }
 
-        f_lp = (IF_sr+20e3)/(4.0*sr_base);
+        f_lp = (IF_sr+20e3)/(4.0*sr_base);    // IF=48k
         t_bw = (IF_sr-20e3)/*/2.0*/;
+        if (wideIF) {                         // IF=96k
+            f_lp = (IF_sr+60e3)/(4.0*sr_base);
+            t_bw = (IF_sr-60e3)/*/2.0*/;
+        }
+        else
         if (option_min) {
             t_bw = (IF_sr-12e3);
         }
@@ -1034,13 +1132,18 @@ static int init_buffers() {
         if (set_lpIQ > 100.0) { // set_lpIQ > 100Hz: overwrite lpIQ_bw[]
             lpIQ_bw[0] = set_lpIQ;
             lpIQ_bw[1] = set_lpIQ;
+            lpIQ_bw[2] = set_lpIQ;
+            option_singleLpIQ = 1;
         }
         //
-        f_lp = lpIQ_bw[0]/(float)sample_rate/2.0;  // RS41,DFM: 12kHz (IF/IQ)
+        f_lp = lpIQ_bw[0]/(float)sample_rate/2.0;  // MTS01: 6kHz (IF/IQ)
         taps = lowpass_init(f_lp, taps, &ws_lpIQ[0]); if (taps < 0) return -1;
         //
-        f_lp = lpIQ_bw[1]/(float)sample_rate/2.0;  // M10: 22kHz (IF/IQ)
+        f_lp = lpIQ_bw[1]/(float)sample_rate/2.0;  // RS41,DFM: 12kHz (IF/IQ)
         taps = lowpass_init(f_lp, taps, &ws_lpIQ[1]); if (taps < 0) return -1;
+        //
+        f_lp = lpIQ_bw[2]/(float)sample_rate/2.0;  // M10: 22kHz (IF/IQ)
+        taps = lowpass_init(f_lp, taps, &ws_lpIQ[2]); if (taps < 0) return -1;
         //
         dsp__lpIQtaps = taps;
         lpIQ_buf = calloc( dsp__lpIQtaps+3, sizeof(float complex));
@@ -1054,11 +1157,29 @@ static int init_buffers() {
 
 
     for (j = 0; j < Nrs; j++) {
+        #ifdef NOMTS01
+        if ( strncmp(rs_hdr[j].type, "MTS01", 5) == 0 ) idx_MTS01 = j;
+        #endif
+        #ifdef NOC34C50
+        if ( strncmp(rs_hdr[j].type, "C34C50", 6) == 0 ) idx_C34C50 = j;
+        #endif
+        #ifdef NOWXR301
+        if ( strncmp(rs_hdr[j].type, "WXR301", 5) == 0 ) idx_WXR301 = j;
+        if ( strncmp(rs_hdr[j].type, "WXRPN9", 5) == 0 ) idx_WXRPN9 = j;
+        #endif
+        #ifdef NOIMET1AB
+        if ( strncmp(rs_hdr[j].type, "IMET1AB", 7) == 0 ) idx_IMET1AB = j;
+        #endif
+    }
+
+    for (j = 0; j < Nrs; j++) {
         rs_hdr[j].spb = sample_rate/(float)rs_hdr[j].sps;
         rs_hdr[j].hLen = strlen(rs_hdr[j].header);
         rs_hdr[j].L = rs_hdr[j].hLen * rs_hdr[j].spb + 0.5;
-        if (rs_hdr[j].hLen > hLen) hLen = rs_hdr[j].hLen;
-        if (rs_hdr[j].L > Lmax) Lmax = rs_hdr[j].L;
+        if (j != idx_MTS01 && j != idx_C34C50 && j != idx_WXR301 && j != idx_WXRPN9 && j != idx_IMET1AB) {
+            if (rs_hdr[j].hLen > hLen) hLen = rs_hdr[j].hLen;
+            if (rs_hdr[j].L > Lmax) Lmax = rs_hdr[j].L;
+        }
     }
 
     // L = hLen * sample_rate/2500.0 + 0.5; // max(hLen*spb)
@@ -1082,10 +1203,10 @@ static int init_buffers() {
 
 
     rawbits = (char *)calloc( hLen+1, sizeof(char)); if (rawbits == NULL) return -100;
-    for (j = 0; j < 3; j++) {
+    for (j = 0; j < N_bwIQ; j++) {
         buf_fm[j]  = (float *)calloc( M+1, sizeof(float)); if (buf_fm[j]  == NULL) return -100;
     }
-    bufs = buf_fm[2];
+    bufs = buf_fm[N_bwIQ-1];
 
 
     xn = calloc(N_DFT+1, sizeof(float));  if (xn == NULL) return -1;
@@ -1166,7 +1287,7 @@ static int init_buffers() {
 static int free_buffers() {
     int j;
 
-    for (j = 0; j < 3; j++) {
+    for (j = 0; j < N_bwIQ; j++) {
         if (buf_fm[j])  { free(buf_fm[j]);  buf_fm[j]  = NULL; }
     }
 
@@ -1201,7 +1322,7 @@ static int free_buffers() {
         }
         if (Y) { free(Y); Y = NULL; }
 
-        for (j = 0; j < 1; j++) {
+        for (j = 0; j < N_bwIQ-1; j++) {
             if (ws_lpIQ[j]) { free(ws_lpIQ[j]); ws_lpIQ[j] = NULL; }
         }
         if (lpIQ_buf) { free(lpIQ_buf); lpIQ_buf = NULL; }
@@ -1233,6 +1354,9 @@ int main(int argc, char **argv) {
     int j_max;
     float mv_max;
 
+    int d2_tn = Nrs;
+
+    ui32_t frm2_M10M20 = 0;
 
 #ifdef CYGWIN
     _setmode(fileno(stdin), _O_BINARY);  // _setmode(_fileno(stdin), _O_BINARY);
@@ -1279,9 +1403,10 @@ int main(int argc, char **argv) {
         }
         else if ( (strcmp(*argv, "-L") == 0) ) {
             // L-band 1680kHz (IQ: decimation not limited)
-            lpIQ_bw[0] = 32e3;
-            lpIQ_bw[1] = 200e3;
-            lpIQ_bw[2] = 400e3;
+            lpIQ_bw[0] = 20e3;
+            lpIQ_bw[1] = 32e3;
+            lpIQ_bw[2] = 200e3;
+            lpIQ_bw[3] = 400e3;
         }
         else if ( (strcmp(*argv, "-c") == 0) || (strcmp(*argv, "--cnt") == 0) ) {
             option_cont = 1;
@@ -1293,6 +1418,9 @@ int main(int argc, char **argv) {
             ++argv;
             if (*argv) tl = atof(*argv);
             else return -50;
+        }
+        else if ( (strcmp(*argv, "-d2") == 0) ) {
+            option_d2 = 1;
         }
         else if ( (strcmp(*argv, "--ch2") == 0) ) { wav_channel = 1; }  // right channel (default: 0=left)
         else if ( (strcmp(*argv, "--ths") == 0) ) {
@@ -1327,6 +1455,9 @@ int main(int argc, char **argv) {
     }
     if (!wavloaded) fp = stdin;
 
+    if (option_d2) {
+        option_cont = 0;
+    }
 
     if (option_pcmraw == 0) {
         j = read_wav_header(fp, wav_channel);
@@ -1367,9 +1498,11 @@ int main(int argc, char **argv) {
         if (k >= K-4) {
             for (j = 0; j <= idxIMETafsk; j++) { // incl. IMET-preamble
 
-                #ifdef NOC34C50
-                if ( strncmp(rs_hdr[j].type, "C34C50", 6) == 0 ) continue;
-                #endif
+                if ( j == idx_MTS01 ) continue;   // only ifdef NOMTS01
+                if ( j == idx_C34C50 ) continue;  // only ifdef NOC34C50
+                if ( j == idx_WXR301 ) continue;  // only ifdef NOWXR301
+                if ( j == idx_WXRPN9 ) continue;  // only ifdef NOWXR301
+                if ( j == idx_IMET1AB ) continue; // only ifdef NOIMET1AB
 
                 mv0_pos[j] = mv_pos[j];
                 mp[j] = getCorrDFT(K, 0, mv+j, mv_pos+j, rs_hdr+j);
@@ -1390,7 +1523,7 @@ int main(int argc, char **argv) {
                     herrs = headcmp(1, mv_pos[j], mv[j]<0, rs_hdr+j);
                     if (herrs < rs_hdr[j].herrs)    // max bit-errors in header
                     {
-                        if ( strncmp(rs_hdr[j].type, "M10", 3) == 0 || strncmp(rs_hdr[j].type, "M20", 3) == 0)
+                        if (strncmp(rs_hdr[j].type, "M10", 3) == 0 || strncmp(rs_hdr[j].type, "M20", 3) == 0)
                         {
                             ui32_t bytes = frm_M10(mv_pos[j], mv[j]<0, rs_hdr+j);
                             int len = (bytes >> 8) & 0xFF;
@@ -1403,6 +1536,7 @@ int main(int argc, char **argv) {
                                 rs_hdr[j].type = "M10";
                                 rs_hdr[j].tn = tn_M10;  // M10: 64 9F , M10+: 64 AF , M10-dop: 64 49  (len > 0x60)
                             }
+                            frm2_M10M20 = bytes;
                         }
 
                         if ( strncmp(rs_hdr[j].type, "IMETafsk", 8) == 0 ) // ? j == idxIMETafsk
@@ -1477,16 +1611,28 @@ int main(int argc, char **argv) {
 
                         if (header_found) {
                             if (!option_silent && (mv[j] > rs_hdr[j].thres || mv[j] < -rs_hdr[j].thres)) {
-                                if (option_verbose) fprintf(stdout, "sample: %d\n", mv_pos[j]);
-                                fprintf(stdout, "%s: %.4f", rs_hdr[j].type, mv[j]);
-                                if (option_dc && option_iq) {
-                                    fprintf(stdout, " , %+.1fHz", rs_hdr[j].df*sr_base);
-                                    if (option_verbose) {
-                                        fprintf(stdout, "   [ fq-ofs: %+.6f", rs_hdr[j].df);
-                                        fprintf(stdout, " = %+.1fHz ]", rs_hdr[j].df*sr_base);
-                                    }
+                                if (option_d2) {
+                                    rs_detect2[j] += 1;
+                                    d2_tn = rs_d2();
+                                    if ( d2_tn == Nrs ) header_found = 0;
                                 }
-                                fprintf(stdout, "\n");
+                                if ( !option_d2 || j == d2_tn ) {
+                                    if (option_verbose) fprintf(stdout, "sample: %d\n", mv_pos[j]);
+                                    fprintf(stdout, "%s: %.4f", rs_hdr[j].type, mv[j]);
+                                    if (strncmp(rs_hdr[j].type, "M10", 3) == 0 || strncmp(rs_hdr[j].type, "M20", 3) == 0)
+                                    {
+                                        if (option_verbose) fprintf(stdout, " [%04X]", frm2_M10M20 & 0xFFFF);
+                                        frm2_M10M20 = 0;
+                                    }
+                                    if (option_dc && option_iq) {
+                                        fprintf(stdout, " , %+.1fHz", rs_hdr[j].df*sr_base);
+                                        if (option_verbose) {
+                                            fprintf(stdout, "   [ fq-ofs: %+.6f", rs_hdr[j].df);
+                                            fprintf(stdout, " = %+.1fHz ]", rs_hdr[j].df*sr_base);
+                                        }
+                                    }
+                                    fprintf(stdout, "\n");
+                                }
                             }
                             // if ((j < 3) && mv[j] < 0) header_found = -1;
 
@@ -1500,7 +1646,7 @@ int main(int argc, char **argv) {
             }
         }
 
-        if (header_found && !option_cont) break;
+        if (header_found && !option_cont || d2_tn < Nrs) break;
         header_found = 0;
         for (j = 0; j < Nrs; j++) mv[j] = 0.0;
     }

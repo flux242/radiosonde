@@ -1091,9 +1091,9 @@ static void print_gpx(gpx_t *gpx) {
         if (gpx->option.jsn && jsonout && gpx->sek < 60.0)
         {
             char *ver_jsn = NULL;
-            char json_sonde_id[] = "DFM-xxxxxxxx\0\0"; // default (dfmXtyp==0)
+            char json_sonde_id[] = "Dxxxxxxxx\0\0"; // default (dfmXtyp==0)
             ui8_t dfmXtyp = (gpx->sonde_typ & 0xF);
-            if (*gpx->SN_out) strncpy(json_sonde_id+4, gpx->SN_out, 9);
+            if (*gpx->SN_out) strncpy(json_sonde_id+1, gpx->SN_out, 9);
 
             // JSON frame counter: gpx->sec_gps , seconds since GPS (ignoring leap seconds, DFM=UTC)
 
@@ -1121,8 +1121,9 @@ static void print_gpx(gpx_t *gpx) {
             }
             //if (dfmXtyp > 0) printf(", \"subtype\": \"0x%1X\"", dfmXtyp);
             if (dfmXtyp > 0) {
-                printf(", \"subtype\": \"0x%1X", dfmXtyp);
-                if (*gpx->dfmtyp) printf(":%s", gpx->dfmtyp);
+                printf(", \"subtype\": ");
+                if (*gpx->dfmtyp) printf("%s", gpx->dfmtyp);
+                else printf("0x%1X", dfmXtyp);
                 printf("\"");
             }
             if (gpx->jsn_freq > 0) {

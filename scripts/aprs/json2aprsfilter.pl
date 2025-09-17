@@ -29,9 +29,10 @@ my $min_sats          = 4;       # minimum number of sats
 
 # if a sonde is above $decimation_alt altitude then
 # don't commit to the server too often to not overload it
-#my $decimation_period = 15;      # commit to the server each N seconds
-my $decimation_period = 1;      # 1 - no dicimation
-my $decimation_alt    = 3000;    # decimation activation altitude in m
+my $decimation_period = 15;      # commit to the server each N seconds
+my $decimation_alt    = $max_altitude_m; # this altitude means no decimaiton of output
+#my $decimation_period = 1;      # 1 - no dicimation
+#my $decimation_alt    = 3000;    # decimation activation altitude in m
 
 our %messages_dict;
 

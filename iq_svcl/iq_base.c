@@ -541,7 +541,7 @@ static double norm2_vect(float *vect, int n) {
     return y;
 }
 
-#define HZBIN 400
+#define HZBIN 500
 
 int init_buffers(dsp_t *dsp) {
 

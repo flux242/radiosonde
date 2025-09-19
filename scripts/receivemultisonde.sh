@@ -126,7 +126,7 @@ shift "$((OPTIND-1))"
 
 DECIMATE=$((TUNER_SAMPLE_RATE/DEMODULATOR_OUTPUT_FREQ))
 [[ "$((DECIMATE*DEMODULATOR_OUTPUT_FREQ))" -ne "$TUNER_SAMPLE_RATE" ]] && show_error_exit "Sample rate should be multiple of $DEMODULATOR_OUTPUT_FREQ"
-SCAN_BINS=$(awk -v tsr="$TUNER_SAMPLE_RATE" 'BEGIN{print lshift(1, int(log(tsr/400)/log(2)))}')
+SCAN_BINS=$(awk -v tsr="$TUNER_SAMPLE_RATE" -v hzb="$SCAN_HZBIN" 'BEGIN{print lshift(1, int(log(tsr/hzb)/log(2)))}')
 
 AUDIO_OUTPUT_CMD="tee >(aplay -r $DEMODULATOR_OUTPUT_FREQ -f S16_LE -t wav -c 1 -B 500000 &> /dev/null)"
 [[ "yes" = "$AUDIO_OUTPUT" ]] || AUDIO_OUTPUT_CMD="cat -"
@@ -227,7 +227,7 @@ scan_power_peaks()
           ++count;
         }
         else {
-          if ( (count<msw) && ($(i+count/2)-sum)>thr ) {
+          if ( count<msw && ($(i+count/2)-sum)>thr ) {
             ++count;
             continue;
           }
